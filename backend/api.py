@@ -1,11 +1,20 @@
 from flask import Flask, request
-from flask_jwt_extended import JWTManager, create_access_token
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 import os
 from dotenv import load_dotenv
-
+import psycopg2
 app = Flask(__name__)
 load_dotenv()
-
+dbs_pass = os.getenv("MY_PASS")
+db = psycopg2.connect(host = "localhost", port = "5432", user = "postgres", password = dbs_pass, database = "postgres")
+cursor = db.cursor()
+cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
+    id INT PRIMARY KEY,
+    name VARCHAR(255),
+    gender VARCHAR(255)
+);
+""")
+db.commit()
 app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY")
 jwt = JWTManager(app)
 
@@ -32,11 +41,41 @@ def login():
         "access_token": token
     }
 
-
 @app.route('/unprotected')
 def index():
     return {
         "1": "You successfully accessed unprotected endpoint!"
+    }
+
+@app.route('/protected/<id>', methods=["GET"])
+@jwt_required()
+def protected_get(id):
+    cursor.execute("""SELECT * FROM Users WHERE id = %s""", (id,))
+    user = cursor.fetchone()
+    return {
+        "1": user
+    }
+
+@app.route('/protected', methods=["POST"])
+@jwt_required()
+def protected_post():
+    id = request.json["id"]
+    name = request.json["name"]
+    gender = request.json["gender"]
+
+    try:
+        cursor.execute("""
+        INSERT INTO Users (id, name, gender) 
+        VALUES (%s, %s, %s)""", (id, name, gender))
+    except:
+        print("Insert zlyhal")
+        return {
+            "-1": "Insert zlyhal"
+        }
+
+    db.commit()
+    return {
+        "1": "Successfully inserted in database!"
     }
 
 if __name__ == "__main__":
