@@ -3,18 +3,23 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 import os
 from dotenv import load_dotenv
 import psycopg2
+
+
 app = Flask(__name__)
 load_dotenv()
-dbs_pass = os.getenv("MY_PASS")
-db = psycopg2.connect(host = "localhost", port = "5432", user = "postgres", password = dbs_pass, database = "postgres")
+
+db = psycopg2.connect(host = "localhost", port = "5432", user = "postgres", password = os.getenv("MY_PASS"), database = "postgres")
+
 cursor = db.cursor()
-cursor.execute("""CREATE TABLE IF NOT EXISTS Users (
-    id INT PRIMARY KEY,
-    name VARCHAR(255),
-    gender VARCHAR(255)
-);
+cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Users (
+            id INT PRIMARY KEY,
+            name VARCHAR(255),
+            gender VARCHAR(255)
+    );
 """)
 db.commit()
+
 app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY")
 jwt = JWTManager(app)
 
@@ -56,6 +61,24 @@ def protected_get(id):
         "1": user
     }
 
+@app.route('/protected/get_all', methods=["GET"])
+@jwt_required()
+def get_all_users():
+    cursor.execute(
+        """
+            SELECT * FROM Users
+        """
+    )
+    users = cursor.fetchall()
+    users_dict = {}
+    i = 1
+    for user in users:
+        users_dict[i] = user
+        i += 1
+
+    return users_dict
+
+
 @app.route('/protected', methods=["POST"])
 @jwt_required()
 def protected_post():
@@ -65,10 +88,11 @@ def protected_post():
 
     try:
         cursor.execute("""
-        INSERT INTO Users (id, name, gender) 
-        VALUES (%s, %s, %s)""", (id, name, gender))
+                INSERT INTO Users (id, name, gender) 
+                VALUES (%s, %s, %s)
+            """, (id, name, gender)
+        )
     except:
-        print("Insert zlyhal")
         return {
             "-1": "Insert zlyhal"
         }
