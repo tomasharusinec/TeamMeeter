@@ -1,0 +1,129 @@
+get_users:
+  tags:
+    - Users
+  summary: "Retrieve all users"
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "List of users retrieved successfully"
+      schema:
+        type: object
+        properties:
+          "1": {type: string, example: "Success"}
+          "users":
+            type: array
+            items:
+              type: object
+              properties:
+                id_registration: {type: integer, example: 1}
+                username: {type: string, example: "jozkoplet"}
+                email: {type: string, example: "jozo1@gmail.com"}
+                registration_date: {type: string, example: "2023-01-01T10:00:00"}
+                name: {type: string, example: "Jozef"}
+                surname: {type: string, example: "Novy"}
+                birthdate: {type: string, example: "1999-06-19"}
+                profile_picture: {type: string, example: "url_k_obrazku"}
+
+get_user_by_id:
+  tags:
+    - Users
+  summary: "Get a specific user by ID"
+  parameters:
+    - in: path
+      name: user_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "User found"
+      schema:
+        type: object
+        properties:
+          "1": {type: string, example: "Success"}
+          "user": {type: object, properties: { id_registration: {type: integer}, username: {type: string} }}
+    404:
+      description: "User not found"
+      schema:
+        type: object
+        properties:
+          "-1": {type: string, example: "User not found!"}
+
+update_user:
+  tags:
+    - Users
+  summary: "Update user profile"
+  parameters:
+    - in: path
+      name: user_id
+      required: true
+      type: integer
+    - in: body
+      name: body
+      schema:
+        type: object
+        properties:
+          name: {type: string, example: "Jozef"}
+          surname: {type: string, example: "Vymeneny"}
+          birthdate: {type: string, example: "1999-06-19"}
+          profile_picture: {type: string, example: "nova_fotka.jpg"}
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Update successful"
+      schema:
+        type: object
+        properties:
+          "1": {type: string, example: "User updated successfully"}
+    403:
+      description: "Forbidden - trying to update another user"
+      schema:
+        type: object
+        properties:
+          "-1": {type: string, example: "You can only update your own profile!"}
+    400:
+      description: "Invalid format"
+      schema:
+        type: object
+        properties:
+          "-1": {type: string, example: "Invalid format!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          "-2": {type: string, example: "Failed to update user!"}
+
+delete_user:
+  tags:
+    - Users
+  summary: "Delete user account"
+  parameters:
+    - in: path
+      name: user_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "User deleted"
+      schema:
+        type: object
+        properties:
+          "1": {type: string, example: "User deleted successfully"}
+    403:
+      description: "Forbidden - trying to delete another user"
+      schema:
+        type: object
+        properties:
+          "-1": {type: string, example: "You can only delete your own account!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          "-2": {type: string, example: "Failed to delete user!"}

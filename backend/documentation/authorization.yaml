@@ -1,0 +1,70 @@
+register:
+  tags:
+    - Authorization
+  summary: "Register a new user"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            firstname: {type: string, example: "Jozef"}
+            surname: {type: string, example: "Novy"}
+            username: {type: string, example: "jozkoplet"}
+            password: {type: string, example: "jozef1234"}
+            email: {type: string, example: "jozo1@gmail.com"}
+            birthdate: {type: string, example: "1999-06-19"}
+  responses:
+    201:
+      description: "User successfully registered"
+      schema:
+        type: object
+        properties:
+          "message": {type: string, example: "Success"}
+    400:
+      description: "Invalid request format"
+      schema:
+        type: object
+        properties:
+          "message": {type: string, example: "Invalid register format!"}
+    409:
+      description: "Conflict - User, Username or Email already exists"
+      schema:
+        type: object
+        properties:
+          "message": {type: string, example: "Username already taken"}
+
+login:
+  tags:
+    - Authorization
+  summary: "User login"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            username: {type: string, example: "jozkoplet"}
+            password: {type: string, example: "jozef1234"}
+  responses:
+    200:
+      description: "Login successful"
+      schema:
+        type: object
+        properties:
+          "message": {type: string, example: "Success"}
+          "token": {type: string, example: "eyJhbG..."}
+    400:
+      description: "Invalid request format"
+      schema:
+        type: object
+        properties:
+          "message": {type: string, example: "Invalid login format!"}
+    401:
+      description: "Unauthorized - Invalid username or password"
+      schema:
+        type: object
+        properties:
+          "message": {type: string, example: "Invalid credentials!"}

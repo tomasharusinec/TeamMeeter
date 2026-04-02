@@ -3,13 +3,13 @@ from flask import request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
-from helper_func import get_current_user_id, db
+from helper_func import get_current_user_id, db, load_yaml
 
 users_blueprint = Blueprint('users', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
 
 @users_blueprint.route('/', methods=["GET"])
-@swag_from('../documentation/index.yaml')
+@swag_from(load_yaml("documentation/users.yaml", "get_users"))
 @jwt_required()
 def get_users():
     cursor.execute("""
@@ -19,10 +19,11 @@ def get_users():
         JOIN user_setting us ON u.id_registration = us.id_user
     """)
     users = cursor.fetchall()
-    return {"1": "Success", "users": users}
+    return {"message": "Success", "users": users}
 
 
 @users_blueprint.route('/<int:user_id>', methods=["GET"])
+@swag_from(load_yaml("documentation/users.yaml", "get_user_by_id"))
 @jwt_required()
 def get_user(user_id):
     cursor.execute("""
@@ -34,16 +35,17 @@ def get_user(user_id):
     """, (user_id,))
     user = cursor.fetchone()
     if user is None:
-        return {"-1": "User not found!"}
-    return {"1": "Success", "user": user}
+        return {"message": "User not found!"}
+    return {"message": "Success", "user": user}
 
 @users_blueprint.route('/<int:user_id>', methods=["PUT"])
+@swag_from(load_yaml("documentation/users.yaml", "update_user"))
 @jwt_required()
 def update_user(user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
     if current_user_id != user_id:
-        return {"-1": "You can only update your own profile!"}
+        return {"message": "You can only update your own profile!"}
 
     try:
         name = request.json.get("name")
@@ -51,7 +53,7 @@ def update_user(user_id):
         birthdate = request.json.get("birthdate")
         profile_picture = request.json.get("profile_picture")
     except:
-        return {"-1": "Invalid format!"}
+        return {"message": "Invalid format!"}
 
     try:
         cursor.execute("""
@@ -65,24 +67,25 @@ def update_user(user_id):
         db.commit()
     except:
         db.rollback()
-        return {"-2": "Failed to update user!"}
+        return {"message": "Failed to update user!"}
 
-    return {"1": "User updated successfully"}
+    return {"message": "User updated successfully"}
 
 
 @users_blueprint.route('/<int:user_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/users.yaml", "delete_user"))
 @jwt_required()
 def delete_user(user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
     if current_user_id != user_id:
-        return {"-1": "You can only delete your own account!"}
+        return {"message": "You can only delete your own account!"}
 
     try:
         cursor.execute('DELETE FROM "user" WHERE id_registration = %s', (user_id,))
         db.commit()
     except:
         db.rollback()
-        return {"-2": "Failed to delete user!"}
+        return {"message": "Failed to delete user!"}
 
-    return {"1": "User deleted successfully"}
+    return {"message": "User deleted successfully"}

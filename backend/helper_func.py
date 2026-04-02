@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import yaml
 
 load_dotenv()
 db = psycopg2.connect(host = "localhost", port = "5432", user = "postgres", password = os.getenv("MY_PASS"), database = "TeamsMeeter")
@@ -30,3 +31,8 @@ def get_current_user_id(identity):
     if result:
         return result["id_registration"]
     return None
+
+def load_yaml(path, key):
+    with open(path) as file:
+        file_dict = yaml.safe_load(file)
+        return file_dict[key]

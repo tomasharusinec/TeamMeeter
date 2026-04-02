@@ -1,13 +1,15 @@
+from flasgger import swag_from
 from flask import request
 from flask_jwt_extended import create_access_token
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
-from helper_func import db
+from helper_func import db, load_yaml
 
 authorization_blueprint = Blueprint('authorization', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
 
-@authorization_blueprint.route('/register', methods=["POST"])
+@authorization_blueprint.route("/register", methods=["POST"])
+@swag_from(load_yaml("documentation/authorization.yaml", "register"))
 def register():
     try:
         firstname = request.json["firstname"]
@@ -18,8 +20,8 @@ def register():
         birthdate = request.json["birthdate"]
     except:
         return {
-            "-1": "Invalid register format!"
-        }
+            "message": "Invalid register format!",
+        }, 400
 
     create_user_cmd = """
         INSERT INTO "user" (username, password, email)
@@ -34,11 +36,11 @@ def register():
 
     cursor.execute('SELECT username FROM "user" WHERE username = %s', (username,))
     if cursor.fetchone():
-        return {"-1": "Username already taken"}
+        return {"message": "Username already taken"}, 409
 
     cursor.execute('SELECT email FROM "user" WHERE email = %s', (email,))
     if cursor.fetchone():
-        return {"-1": "This email was already used!"}
+        return {"message": "This email was already used!"}, 409
 
     try:
         cursor.execute(create_user_cmd, (username, password, email))
@@ -47,27 +49,26 @@ def register():
         db.commit()
     except:
         db.rollback()
-        return {"-2": "User already exists!"}
+        return {"message": "User already exists!"}, 409
 
-    return {"1": "Success"}
+    return {"message": "Success"}, 201
 
 
-@authorization_blueprint.route('/login', methods=["POST"])
+@authorization_blueprint.route("/login", methods=["POST"])
+@swag_from(load_yaml("documentation/authorization.yaml", "login"))
 def login():
     try:
         username = request.json["username"]
         password = request.json["password"]
     except:
         return {
-            "-1": "Invalid login format!"
-        }
+            "message": "Invalid login format!"
+        }, 400
 
     cursor.execute('SELECT id_registration, username, password FROM "user" WHERE username = %s', (username,))
     output = cursor.fetchone()
-    if output is None:
-        return {"-1": "This username does not exist!"}
-    elif output["password"] != password:
-        return {"-2": "Wrong password!"}
+    if output is None or output["password"] != password:
+        return {"message": "Invalid credentials!"}, 401
 
     access_token = create_access_token(identity=username)
-    return {"1": "Success", "token": access_token}
+    return {"message": "Success", "token": access_token}, 200
