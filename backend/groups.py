@@ -9,6 +9,7 @@ from flasgger import Swagger, swag_from
 groups_blueprint = Blueprint('groups', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
 
+
 @groups_blueprint.route('/', methods = ['POST'])
 @jwt_required()
 def create_group():
@@ -45,6 +46,7 @@ def create_group():
     except:
         db.rollback()
         return {"-1": "error"}
+
 
 @groups_blueprint.route('/', methods=["GET"])
 @jwt_required()
@@ -198,18 +200,18 @@ def add_group_member(group_id):
         if role_result:
             role_id = role_result["id_role"]
         else:
-            # Ak rola Member neexistuje, vytvoríme ju
+
             cursor.execute('INSERT INTO role (group_id, name, color) VALUES (%s, %s, %s) RETURNING id_role',
                            (group_id, 'Member', '#808080'))
             role_id = cursor.fetchone()["id_role"]
 
-            # Priradíme tejto novej role všetky existujúce práva, ale nastavené na FALSE
+
             cursor.execute("""INSERT INTO role_permission (role_id, permission_id, value)
                             SELECT %s, id_permission, FALSE
                             FROM permission
                             """, (role_id,))
 
-        # 8. Priradenie roly používateľovi
+
         cursor.execute('INSERT INTO user_role (user_id, role_id) VALUES (%s, %s)', (user_id, role_id))
         db.commit()
     except:
