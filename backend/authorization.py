@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
 from helper_func import db, load_yaml
+from werkzeug.security import generate_password_hash, check_password_hash
 
 authorization_blueprint = Blueprint('authorization', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -43,7 +44,8 @@ def register():
         return {"message": "This email was already used!"}, 409
 
     try:
-        cursor.execute(create_user_cmd, (username, password, email))
+        hashed_password = generate_password_hash(password)
+        cursor.execute(create_user_cmd, (username, hashed_password, email))
         user_id = cursor.fetchone()["id_registration"]
         cursor.execute(create_user_settings_cmd, (user_id, firstname, surname, birthdate))
         db.commit()
@@ -67,7 +69,7 @@ def login():
 
     cursor.execute('SELECT id_registration, username, password FROM "user" WHERE username = %s', (username,))
     output = cursor.fetchone()
-    if output is None or output["password"] != password:
+    if output is None or not check_password_hash(output["password"], password):
         return {"message": "Invalid credentials!"}, 401
 
     access_token = create_access_token(identity=username)
