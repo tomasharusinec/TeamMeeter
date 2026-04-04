@@ -5,9 +5,11 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
 from helper_func import db, get_current_user_id, check_permission
+from cryptography.fernet import Fernet
 
 conversations_blueprint = Blueprint('/conversations', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
+cipher_suite = Fernet(os.getenv("MESSAGE_ENCRYPTION_KEY"))
 
 @conversations_blueprint.route('/', methods=["GET"])
 @jwt_required()
@@ -205,6 +207,15 @@ def get_messages(conv_id):
         ORDER BY m.id ASC
     """, (conv_id,))
     messages = cursor.fetchall()
+
+    for msg in messages:
+        try:
+            decrypted_bytes = cipher_suite.decrypt(bytes(msg["text"]))
+            msg["text"] = decrypted_bytes.decode()
+        except Exception:
+            msg["text"] = "[Decryption Error]"
+
+
     return {"message": "Success", "messages": messages}
 
 
@@ -226,11 +237,11 @@ def send_message(conv_id):
         return {"message": "Invalid format!"}
 
     try:
+        encrypted_bytes = cipher_suite.encrypt(text.encode())
         cursor.execute("""
-            INSERT INTO message (conversation_id, sender_id, text)
-            VALUES (%s, %s, %s)
-            RETURNING id
-        """, (conv_id, current_user_id, text))
+                       INSERT INTO message (conversation_id, sender_id, text)
+                       VALUES (%s, %s, %s) RETURNING id
+                       """, (conv_id, current_user_id, encrypted_bytes))
         message_id = cursor.fetchone()["id"]
         db.commit()
     except:
