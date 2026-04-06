@@ -2,7 +2,7 @@ from flask import Flask
 from authorization import authorization_blueprint
 from notifications import notifications_blueprint
 from groups import groups_blueprint
-from helper_func import get_current_user_id
+from helper_func import get_current_user_id, sync_permissions
 from users import users_blueprint
 from roles import roles_blueprint
 from conversations import conversations_blueprint
@@ -53,4 +53,5 @@ app.register_blueprint(roles_blueprint, url_prefix="/roles")
 app.register_blueprint(notifications_blueprint, url_prefix="/notifications")
 
 if __name__ == "__main__":
+    sync_permissions()
     app.run(host="0.0.0.0", port=5000)

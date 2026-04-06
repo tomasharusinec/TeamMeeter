@@ -1,0 +1,17 @@
+[
+    "view_activities",
+    "create_activity",
+    "edit_activity",
+    "delete_activity",
+    "assign_activity_user",
+    "assign_activity_role",
+    "manage_group",
+    "delete_group",
+    "add_user",
+    "kick_user",
+    "create_role",
+    "edit_role",
+    "delete_role",
+    "add_role",
+    "manage_roles"
+]

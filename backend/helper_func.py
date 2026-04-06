@@ -1,3 +1,4 @@
+import json
 import os
 from dotenv import load_dotenv
 import psycopg2
@@ -36,3 +37,19 @@ def load_yaml(path, key):
     with open(path) as file:
         file_dict = yaml.safe_load(file)
         return file_dict[key]
+
+
+def sync_permissions():
+    try:
+        with open("config/permissions.json", "r") as f:
+            required_permissions = json.load(f)
+
+        with db.cursor() as cursor:
+            cursor.executemany("""
+                INSERT INTO permission (name) VALUES (%s)
+                ON CONFLICT (name) DO NOTHING
+            """, [(p,) for p in required_permissions])
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Failed to sync permissions: {e}")
