@@ -248,6 +248,8 @@ def send_message(conv_id):
         db.rollback()
         return {"message": "Failed to send message!"}
 
+    return {"message": "Message sent successfully", "message_id": message_id}
+
 @conversations_blueprint.route('/<int:conv_id>/messages/<int:message_id>', methods=["DELETE"])
 @jwt_required()
 def delete_message(conv_id, message_id):
