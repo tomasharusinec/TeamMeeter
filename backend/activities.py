@@ -260,3 +260,114 @@ def remove_activity_user(activity_id, user_id):
         return {"message": "Failed to remove user from activity!"}, 500
 
     return {"message": "User removed from activity successfully"}, 200
+
+
+@activities_blueprint.route('/<int:activity_id>/roles', methods=["GET"])
+@jwt_required()
+def get_activity_roles(activity_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    info = get_activity_info(activity_id)
+    if info is None:
+        return {"message": "Activity not found!"}, 404
+
+    group_id = info["group_id"]
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    cursor.execute("""
+        SELECT r.id_role, r.name, r.color
+        FROM activity_role ar
+        JOIN role r ON ar.role_id = r.id_role
+        WHERE ar.activity_id = %s
+    """, (activity_id,))
+    roles = cursor.fetchall()
+    return {"message": "Success", "roles": roles}, 200
+
+
+@activities_blueprint.route('/<int:activity_id>/roles', methods=["POST"])
+@jwt_required()
+def assign_activity_role(activity_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    info = get_activity_info(activity_id)
+    if info is None:
+        return {"message": "Activity not found!"}, 404
+
+    group_id = info["group_id"]
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    if not check_permission(current_user_id, group_id, "assign_activity_role"):
+        return {"message": "You don't have permission to assign roles to activities!"}, 403
+
+    try:
+        role_id = request.json["role_id"]
+    except:
+        return {"message": "Invalid format!"}, 400
+
+    try:
+        cursor.execute("""
+            INSERT INTO activity_role (activity_id, role_id) VALUES (%s, %s)
+        """, (activity_id, role_id))
+        db.commit()
+    except:
+        db.rollback()
+        return {"message": "Failed to assign role to activity!"}, 500
+
+    return {"message": "Role assigned to activity successfully"}, 200
+
+
+@activities_blueprint.route('/<int:activity_id>/roles/<int:role_id>', methods=["DELETE"])
+@jwt_required()
+def remove_activity_role(activity_id, role_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    info = get_activity_info(activity_id)
+    if info is None:
+        return {"message": "Activity not found!"}, 404
+
+    group_id = info["group_id"]
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    if not check_permission(current_user_id, group_id, "assign_activity_role"):
+        return {"message": "You don't have permission to remove roles from activities!"}, 403
+
+    try:
+        cursor.execute("""
+            DELETE FROM activity_role WHERE activity_id = %s AND role_id = %s
+        """, (activity_id, role_id))
+        db.commit()
+    except:
+        db.rollback()
+        return {"message": "Failed to remove role from activity!"}, 500
+
+    return {"message": "Role removed from activity successfully"}, 200
+
+
+@activities_blueprint.route('/me', methods=["GET"])
+@jwt_required()
+def get_my_activities():
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    cursor.execute("""
+        SELECT DISTINCT a.id_activity, a.name, a.description, a.creation_date, a.deadline, g.name AS group_name, u_creator.username AS creator_username
+        FROM activity a
+        JOIN "group" g ON a.group_id = g.id_group
+        JOIN "user" u_creator ON a.creator_id = u_creator.id_registration
+        LEFT JOIN activity_user au ON a.id_activity = au.id_activity
+        LEFT JOIN activity_role ar ON a.id_activity = ar.activity_id
+        LEFT JOIN user_role ur ON ar.role_id = ur.role_id AND ur.user_id = %s
+        WHERE au.id_user = %s OR ur.user_id = %s
+    """, (current_user_id, current_user_id, current_user_id))
+    activities = cursor.fetchall()
+
+    return {"message": "Success", "activities": activities}, 200
