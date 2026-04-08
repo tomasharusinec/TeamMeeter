@@ -1,8 +1,9 @@
+from flasgger import swag_from
 from flask import request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
-from helper_func import db, get_current_user_id, is_group_member, check_permission
+from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml
 
 activities_blueprint = Blueprint('activities', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -13,6 +14,7 @@ def get_activity_info(activity_id):
     return cursor.fetchone()
 
 @activities_blueprint.route('/groups/<int:group_id>', methods=["GET"])
+@swag_from(load_yaml("documentation/activities.yaml", "get_activities"))
 @jwt_required()
 def get_activities(group_id):
     identity = get_jwt_identity()
@@ -36,6 +38,7 @@ def get_activities(group_id):
 
 
 @activities_blueprint.route('/groups/<int:group_id>', methods=["POST"])
+@swag_from(load_yaml("documentation/activities.yaml", "create_activity"))
 @jwt_required()
 def create_activity(group_id):
     identity = get_jwt_identity()
@@ -70,6 +73,7 @@ def create_activity(group_id):
 
 
 @activities_blueprint.route('/<int:activity_id>', methods=["GET"])
+@swag_from(load_yaml("documentation/activities.yaml", "get_activity"))
 @jwt_required()
 def get_activity(activity_id):
     identity = get_jwt_identity()
@@ -99,6 +103,7 @@ def get_activity(activity_id):
 
 
 @activities_blueprint.route('/<int:activity_id>', methods=["PUT"])
+@swag_from(load_yaml("documentation/activities.yaml", "update_activity"))
 @jwt_required()
 def update_activity(activity_id):
     identity = get_jwt_identity()
@@ -142,6 +147,7 @@ def update_activity(activity_id):
 
 
 @activities_blueprint.route('/<int:activity_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/activities.yaml", "delete_activity"))
 @jwt_required()
 def delete_activity(activity_id):
     identity = get_jwt_identity()
@@ -172,6 +178,7 @@ def delete_activity(activity_id):
 
 
 @activities_blueprint.route('/<int:activity_id>/users', methods=["GET"])
+@swag_from(load_yaml("documentation/activities.yaml", "get_activity_users"))
 @jwt_required()
 def get_activity_users(activity_id):
     identity = get_jwt_identity()
@@ -198,6 +205,7 @@ def get_activity_users(activity_id):
 
 
 @activities_blueprint.route('/<int:activity_id>/users', methods=["POST"])
+@swag_from(load_yaml("documentation/activities.yaml", "assign_activity_user"))
 @jwt_required()
 def assign_activity_user(activity_id):
     identity = get_jwt_identity()
@@ -233,6 +241,7 @@ def assign_activity_user(activity_id):
 
 
 @activities_blueprint.route('/<int:activity_id>/users/<int:user_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/activities.yaml", "remove_activity_user"))
 @jwt_required()
 def remove_activity_user(activity_id, user_id):
     identity = get_jwt_identity()
@@ -263,6 +272,7 @@ def remove_activity_user(activity_id, user_id):
 
 
 @activities_blueprint.route('/<int:activity_id>/roles', methods=["GET"])
+@swag_from(load_yaml("documentation/activities.yaml", "get_activity_roles"))
 @jwt_required()
 def get_activity_roles(activity_id):
     identity = get_jwt_identity()
@@ -288,6 +298,7 @@ def get_activity_roles(activity_id):
 
 
 @activities_blueprint.route('/<int:activity_id>/roles', methods=["POST"])
+@swag_from(load_yaml("documentation/activities.yaml", "assign_activity_role"))
 @jwt_required()
 def assign_activity_role(activity_id):
     identity = get_jwt_identity()
@@ -323,6 +334,7 @@ def assign_activity_role(activity_id):
 
 
 @activities_blueprint.route('/<int:activity_id>/roles/<int:role_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/activities.yaml", "remove_activity_role"))
 @jwt_required()
 def remove_activity_role(activity_id, role_id):
     identity = get_jwt_identity()
@@ -353,6 +365,7 @@ def remove_activity_role(activity_id, role_id):
 
 
 @activities_blueprint.route('/me', methods=["GET"])
+@swag_from(load_yaml("documentation/activities.yaml", "get_my_activities"))
 @jwt_required()
 def get_my_activities():
     identity = get_jwt_identity()

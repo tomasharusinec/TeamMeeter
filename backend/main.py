@@ -1,5 +1,6 @@
 from flask import Flask
 from authorization import authorization_blueprint
+from activities import activities_blueprint
 from notifications import notifications_blueprint
 from groups import groups_blueprint
 from helper_func import get_current_user_id, sync_permissions
@@ -49,6 +50,7 @@ app.register_blueprint(authorization_blueprint, url_prefix='/authorization')
 app.register_blueprint(users_blueprint, url_prefix='/users')
 app.register_blueprint(groups_blueprint, url_prefix='/groups')
 app.register_blueprint(conversations_blueprint, url_prefix="/conversations")
+app.register_blueprint(activities_blueprint, url_prefix="/activities")
 app.register_blueprint(roles_blueprint, url_prefix="/roles")
 app.register_blueprint(notifications_blueprint, url_prefix="/notifications")
 
