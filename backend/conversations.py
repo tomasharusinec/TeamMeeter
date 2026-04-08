@@ -1,10 +1,11 @@
 import io
 import os
+from flasgger import swag_from
 from flask import request, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
-from helper_func import db, get_current_user_id, check_permission
+from helper_func import db, get_current_user_id, check_permission, load_yaml
 from cryptography.fernet import Fernet
 
 conversations_blueprint = Blueprint('/conversations', __name__)
@@ -12,6 +13,7 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 cipher_suite = Fernet(os.getenv("MESSAGE_ENCRYPTION_KEY"))
 
 @conversations_blueprint.route('/', methods=["GET"])
+@swag_from(load_yaml("documentation/conversations.yaml", "get_conversations"))
 @jwt_required()
 def get_conversations():
     identity = get_jwt_identity()
@@ -28,6 +30,7 @@ def get_conversations():
 
 
 @conversations_blueprint.route('/', methods=["POST"])
+@swag_from(load_yaml("documentation/conversations.yaml", "create_conversation"))
 @jwt_required()
 def create_conversation():
     identity = get_jwt_identity()
@@ -69,6 +72,7 @@ def create_conversation():
 
 
 @conversations_blueprint.route('/<int:conv_id>', methods=["GET"])
+@swag_from(load_yaml("documentation/conversations.yaml", "get_conversation"))
 @jwt_required()
 def get_conversation(conv_id):
     identity = get_jwt_identity()
@@ -90,6 +94,7 @@ def get_conversation(conv_id):
 
 
 @conversations_blueprint.route('/<int:conv_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/conversations.yaml", "delete_conversation"))
 @jwt_required()
 def delete_conversation(conv_id):
     identity = get_jwt_identity()
@@ -112,6 +117,7 @@ def delete_conversation(conv_id):
 
 
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["GET"])
+@swag_from(load_yaml("documentation/conversations.yaml", "get_participants"))
 @jwt_required()
 def get_participants(conv_id):
     identity = get_jwt_identity()
@@ -135,6 +141,7 @@ def get_participants(conv_id):
 
 
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["POST"])
+@swag_from(load_yaml("documentation/conversations.yaml", "add_participant"))
 @jwt_required()
 def add_participant(conv_id):
     identity = get_jwt_identity()
@@ -164,6 +171,7 @@ def add_participant(conv_id):
 
 
 @conversations_blueprint.route('/<int:conv_id>/participants/<int:user_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/conversations.yaml", "remove_participant"))
 @jwt_required()
 def remove_participant(conv_id, user_id):
     identity = get_jwt_identity()
@@ -187,6 +195,7 @@ def remove_participant(conv_id, user_id):
     return {"message": "Participant removed successfully"}
 
 @conversations_blueprint.route('/<int:conv_id>/messages', methods=["GET"])
+@swag_from(load_yaml("documentation/conversations.yaml", "get_messages"))
 @jwt_required()
 def get_messages(conv_id):
     identity = get_jwt_identity()
@@ -220,6 +229,7 @@ def get_messages(conv_id):
 
 
 @conversations_blueprint.route('/<int:conv_id>/messages', methods=["POST"])
+@swag_from(load_yaml("documentation/conversations.yaml", "send_message"))
 @jwt_required()
 def send_message(conv_id):
     identity = get_jwt_identity()
@@ -251,6 +261,7 @@ def send_message(conv_id):
     return {"message": "Message sent successfully", "message_id": message_id}
 
 @conversations_blueprint.route('/<int:conv_id>/messages/<int:message_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/conversations.yaml", "delete_message"))
 @jwt_required()
 def delete_message(conv_id, message_id):
     identity = get_jwt_identity()
@@ -292,6 +303,7 @@ def delete_message(conv_id, message_id):
 
 
 @conversations_blueprint.route('/messages/<int:message_id>/files', methods=["GET"])
+@swag_from(load_yaml("documentation/conversations.yaml", "get_files"))
 @jwt_required()
 def get_files(message_id):
     identity = get_jwt_identity()
@@ -313,6 +325,7 @@ def get_files(message_id):
 
 
 @conversations_blueprint.route('/messages/<int:message_id>/files', methods=["POST"])
+@swag_from(load_yaml("documentation/conversations.yaml", "upload_file"))
 @jwt_required()
 def upload_file(message_id):
     identity = get_jwt_identity()
@@ -362,6 +375,7 @@ def upload_file(message_id):
 
 
 @conversations_blueprint.route('/files/<int:file_id>', methods=["GET"])
+@swag_from(load_yaml("documentation/conversations.yaml", "download_file"))
 @jwt_required()
 def download_file(file_id):
     identity = get_jwt_identity()
@@ -396,6 +410,7 @@ def download_file(file_id):
 
 
 @conversations_blueprint.route('/files/<int:file_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/conversations.yaml", "delete_file"))
 @jwt_required()
 def delete_file(file_id):
     identity = get_jwt_identity()

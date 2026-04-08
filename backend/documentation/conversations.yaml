@@ -1,0 +1,520 @@
+get_conversations:
+  tags:
+    - Conversations
+  summary: "Retrieve all conversations for the current user"
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "List of conversations retrieved successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Success"}
+          conversations:
+            type: array
+            items:
+              type: object
+              properties:
+                id: {type: integer, example: 1}
+                name: {type: string, example: "Test Conversation"}
+                created_at: {type: string, example: "2023-10-27T10:00:00"}
+                type: {type: string, example: "individual"}
+
+create_conversation:
+  tags:
+    - Conversations
+  summary: "Create a new conversation"
+  parameters:
+    - in: body
+      name: body
+      schema:
+        type: object
+        required:
+          - type
+        properties:
+          name: {type: string, example: "Nova Konverzacia"}
+          type: {type: string, example: "group"}
+          participant_ids:
+            type: array
+            items:
+              type: integer
+            example: [2, 3]
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Conversation created successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Conversation created successfully"}
+          conversation_id: {type: integer, example: 1}
+    400:
+      description: "Invalid format or Type must be 'individual' or 'group'"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Invalid format!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to create conversation!"}
+
+get_conversation:
+  tags:
+    - Conversations
+  summary: "Get a specific conversation by ID"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Conversation found"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Success"}
+          conversation:
+            type: object
+            properties:
+              id: {type: integer, example: 1}
+              name: {type: string, example: "Nova Konverzacia"}
+              created_at: {type: string, example: "2023-10-27T10:00:00"}
+              type: {type: string, example: "group"}
+    403:
+      description: "Not a participant"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You are not a participant of this conversation!"}
+    404:
+      description: "Conversation not found"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Conversation not found!"}
+
+delete_conversation:
+  tags:
+    - Conversations
+  summary: "Delete a conversation"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Conversation deleted successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Conversation deleted successfully"}
+    403:
+      description: "Not a participant"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You are not a participant of this conversation!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to delete conversation!"}
+
+get_participants:
+  tags:
+    - Conversations
+  summary: "Retrieve all participants of a specific conversation"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "List of participants retrieved successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Success"}
+          participants:
+            type: array
+            items:
+              type: object
+              properties:
+                id_registration: {type: integer, example: 1}
+                username: {type: string, example: "jozkoplet"}
+                name: {type: string, example: "Jozef"}
+                surname: {type: string, example: "Novy"}
+    403:
+      description: "Not a participant"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You are not a participant of this conversation!"}
+
+add_participant:
+  tags:
+    - Conversations
+  summary: "Add a new participant to a conversation"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+    - in: body
+      name: body
+      schema:
+        type: object
+        required:
+          - user_id
+        properties:
+          user_id: {type: integer, example: 2}
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Participant added successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Participant added successfully"}
+    400:
+      description: "Invalid format"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Invalid format!"}
+    403:
+      description: "Not a participant"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You are not a participant of this conversation!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to add participant!"}
+
+remove_participant:
+  tags:
+    - Conversations
+  summary: "Remove a participant from a conversation"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+    - in: path
+      name: user_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Participant removed successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Participant removed successfully"}
+    403:
+      description: "Not a participant"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You are not a participant of this conversation!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to remove participant!"}
+
+get_messages:
+  tags:
+    - Conversations
+  summary: "Retrieve all messages of a specific conversation"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "List of messages retrieved successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Success"}
+          messages:
+            type: array
+            items:
+              type: object
+              properties:
+                id: {type: integer, example: 1}
+                conversation_id: {type: integer, example: 1}
+                sender_id: {type: integer, example: 1}
+                text: {type: string, example: "Ahoj"}
+                sender_username: {type: string, example: "jozkoplet"}
+    403:
+      description: "Not a participant"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You are not a participant of this conversation!"}
+
+send_message:
+  tags:
+    - Conversations
+  summary: "Send a message in a conversation"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+    - in: body
+      name: body
+      schema:
+        type: object
+        required:
+          - text
+        properties:
+          text: {type: string, example: "Ahoj"}
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Message sent successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Message sent successfully"}
+          message_id: {type: integer, example: 1}
+    400:
+      description: "Invalid format"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Invalid format!"}
+    403:
+      description: "Not a participant"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You are not a participant of this conversation!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to send message!"}
+
+delete_message:
+  tags:
+    - Conversations
+  summary: "Delete a message"
+  parameters:
+    - in: path
+      name: conv_id
+      required: true
+      type: integer
+    - in: path
+      name: message_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Message deleted successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Message deleted successfully"}
+    403:
+      description: "No permission"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You don't have permission to delete this message!"}
+    404:
+      description: "Message not found"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Message not found!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to delete message!"}
+
+get_files:
+  tags:
+    - Conversations
+  summary: "Retrieve all files for a specific message"
+  parameters:
+    - in: path
+      name: message_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "List of files retrieved successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Success"}
+          files:
+            type: array
+            items:
+              type: object
+              properties:
+                id: {type: integer, example: 1}
+                message_id: {type: integer, example: 1}
+                name: {type: string, example: "document"}
+                extension: {type: string, example: "pdf"}
+    403:
+      description: "No access to message"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You don't have access to this message!"}
+
+upload_file:
+  tags:
+    - Conversations
+  summary: "Upload a file for a specific message"
+  parameters:
+    - in: path
+      name: message_id
+      required: true
+      type: integer
+    - in: formData
+      name: content
+      type: file
+      required: true
+      description: "The file to upload"
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "File uploaded successfully"
+      schema:
+        type: object
+        properties:
+          "1": {type: string, example: "File uploaded successfully"}
+          file_id: {type: integer, example: 1}
+          name: {type: string, example: "document"}
+          extension: {type: string, example: "pdf"}
+    400:
+      description: "Invalid format or empty file"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "File is empty!"}
+    403:
+      description: "Not your message"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You can only attach files to your own messages!"}
+    404:
+      description: "Message not found"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Message not found!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to upload file!"}
+
+download_file:
+  tags:
+    - Conversations
+  summary: "Download a specific file"
+  parameters:
+    - in: path
+      name: file_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "File downloaded successfully"
+      schema:
+        type: file
+    403:
+      description: "No access"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You don't have access to this file!"}
+    404:
+      description: "File not found"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "File not found!"}
+
+delete_file:
+  tags:
+    - Conversations
+  summary: "Delete a specific file"
+  parameters:
+    - in: path
+      name: file_id
+      required: true
+      type: integer
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "File deleted successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "File deleted successfully"}
+    403:
+      description: "No access or permission"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "You don't have permission to delete this file!"}
+    404:
+      description: "File not found"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "File not found!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to delete file!"}
