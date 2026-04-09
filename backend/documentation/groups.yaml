@@ -2,38 +2,45 @@ create_group:
   tags:
     - Groups
   summary: "Create a new group"
-  parameters:
-    - in: body
-      name: body
-      schema:
-        type: object
-        required:
-          - name
-        properties:
-          name: {type: string, example: "Moja Skupina"}
-          icon: {type: string, example: "default_icon.png"}
   security:
     - Bearer: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - name
+          properties:
+            name: {type: string, example: "Moja Skupina"}
+            icon: {type: string, example: "default_icon.png"}
   responses:
     201:
       description: "Group created successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Group created successfully"}
-          group_id: {type: integer, example: 1}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Group created successfully"}
+              group_id: {type: integer, example: 1}
     400:
       description: "Bad Request - Missing group name"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Group name is required!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Group name is required!"}
     500:
       description: "Database error"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "error"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "error"}
 
 get_groups:
   tags:
@@ -44,251 +51,304 @@ get_groups:
   responses:
     200:
       description: "List of groups retrieved successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Success"}
-          groups:
-            type: array
-            items:
-              type: object
-              properties:
-                id_group: {type: integer, example: 1}
-                name: {type: string, example: "Moja Skupina"}
-                create_date: {type: string, example: "2023-10-27T10:00:00"}
-                icon: {type: string, example: "default_icon.png"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Success"}
+              groups:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_group: {type: integer, example: 1}
+                    name: {type: string, example: "Moja Skupina"}
+                    create_date: {type: string, example: "2023-10-27T10:00:00"}
+                    icon: {type: string, example: "default_icon.png"}
 
 get_group:
   tags:
     - Groups
   summary: "Get a specific group by ID"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "Group found"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Success"}
-          group:
+      content:
+        application/json:
+          schema:
             type: object
             properties:
-              id_group: {type: integer, example: 1}
-              name: {type: string, example: "Moja Skupina"}
-              create_date: {type: string, example: "2023-10-27T10:00:00"}
-              icon: {type: string, example: "default_icon.png"}
+              message: {type: string, example: "Success"}
+              group:
+                type: object
+                properties:
+                  id_group: {type: integer, example: 1}
+                  name: {type: string, example: "Moja Skupina"}
+                  create_date: {type: string, example: "2023-10-27T10:00:00"}
+                  icon: {type: string, example: "default_icon.png"}
     403:
       description: "Forbidden - Not a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "You are not a member of this group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You are not a member of this group!"}
     404:
       description: "Group not found"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Group not found!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Group not found!"}
 
 update_group:
   tags:
     - Groups
   summary: "Update group details"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-    - in: body
-      name: body
       schema:
-        type: object
-        properties:
-          name: {type: string, example: "Nova Skupina"}
-          icon: {type: string, example: "novy_icon.png"}
-  security:
-    - Bearer: []
+        type: integer
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name: {type: string, example: "Nova Skupina"}
+            icon: {type: string, example: "novy_icon.png"}
   responses:
     200:
       description: "Group updated successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Group updated successfully"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Group updated successfully"}
     400:
       description: "Invalid format"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Invalid format!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Invalid format!"}
     403:
       description: "Forbidden - No permission or not a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "You don't have permission to manage this group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to manage this group!"}
     500:
       description: "Database error"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Failed to update group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to update group!"}
 
 delete_group:
   tags:
     - Groups
   summary: "Delete a group"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "Group deleted successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Group deleted successfully"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Group deleted successfully"}
     403:
       description: "Forbidden - No permission or not a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "You don't have permission to delete this group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to delete this group!"}
     500:
       description: "Database error"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Failed to delete group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to delete group!"}
 
 get_group_members:
   tags:
     - Groups
   summary: "Retrieve all members of a specific group"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "List of members retrieved successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Success"}
-          members:
-            type: array
-            items:
-              type: object
-              properties:
-                id_registration: {type: integer, example: 1}
-                username: {type: string, example: "jozkoplet"}
-                email: {type: string, example: "jozo1@gmail.com"}
-                name: {type: string, example: "Jozef"}
-                surname: {type: string, example: "Novy"}
-                profile_picture: {type: string, example: "url_k_obrazku"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Success"}
+              members:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_registration: {type: integer, example: 1}
+                    username: {type: string, example: "jozkoplet"}
+                    email: {type: string, example: "jozo1@gmail.com"}
+                    name: {type: string, example: "Jozef"}
+                    surname: {type: string, example: "Novy"}
+                    profile_picture: {type: string, example: "url_k_obrazku"}
     403:
       description: "Forbidden - Not a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "You are not a member of this group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You are not a member of this group!"}
 
 add_group_member:
   tags:
     - Groups
   summary: "Add a new member to a group"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-    - in: body
-      name: body
       schema:
-        type: object
-        required:
-          - username
-        properties:
-          username: {type: string, example: "novy_clen"}
-  security:
-    - Bearer: []
+        type: integer
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - username
+          properties:
+            username: {type: string, example: "novy_clen"}
   responses:
     200:
       description: "Member added successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Member added successfully"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Member added successfully"}
     400:
       description: "Invalid format or user already a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "User is already a member of this group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "User is already a member of this group!"}
     403:
       description: "Forbidden - No permission or not a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "You don't have permission to add users!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to add users!"}
     404:
       description: "User not found"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "User not found!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "User not found!"}
     500:
       description: "Database error"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Failed to add member!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to add member!"}
 
 remove_group_member:
   tags:
     - Groups
   summary: "Remove a member from a group"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
+      schema:
+        type: integer
     - in: path
       name: user_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "Member removed successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Member removed successfully"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Member removed successfully"}
     403:
       description: "Forbidden - No permission or not a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "You don't have permission to manage members!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to manage members!"}
     500:
       description: "Database error"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Failed to remove member!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to remove member!"}

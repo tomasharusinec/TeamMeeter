@@ -20,14 +20,13 @@ def get_conversations():
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-        SELECT c.id, c.name, c.created_at, c.type
+        SELECT c.id, c.name, c.created_at
         FROM conversation c
         JOIN participant p ON c.id = p.conversation_id
         WHERE p.user_id = %s
     """, (current_user_id,))
     conversations = cursor.fetchall()
     return {"message": "Success", "conversations": conversations}
-
 
 @conversations_blueprint.route('/', methods=["POST"])
 @swag_from(load_yaml("documentation/conversations.yaml", "create_conversation"))
@@ -36,40 +35,39 @@ def create_conversation():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
 
-    try:
-        name = request.json.get("name")
-        conv_type = request.json["type"]
-        participant_ids = request.json.get("participant_ids", [])
-    except:
-        return {"message": "Invalid format!"}
+    if not request.is_json:
+        return {"message": "Invalid format! JSON required."}, 400
 
-    if conv_type not in ("individual", "group"):
-        return {"message": "Type must be 'individual' or 'group'!"}
+    name = request.json.get("name")
+
+    participant_ids = request.json.get("participant_ids", request.json.get("participants", []))
+
+    if not isinstance(participant_ids, list):
+        participant_ids = []
+
+    unique_participants = set(participant_ids)
+    unique_participants.add(current_user_id)
 
     try:
         cursor.execute("""
-            INSERT INTO conversation (name, type) VALUES (%s, %s)
-            RETURNING id
-        """, (name, conv_type))
+                       INSERT INTO conversation (name)
+                       VALUES (%s) RETURNING id
+                       """, (name,))
         conv_id = cursor.fetchone()["id"]
 
-        cursor.execute("""
-            INSERT INTO participant (conversation_id, user_id) VALUES (%s, %s)
-        """, (conv_id, current_user_id))
-
-        for pid in participant_ids:
-            if pid != current_user_id:
-                cursor.execute("""
-                    INSERT INTO participant (conversation_id, user_id) VALUES (%s, %s)
-                """, (conv_id, pid))
+        for pid in unique_participants:
+            cursor.execute("""
+                           INSERT INTO participant (conversation_id, user_id)
+                           VALUES (%s, %s)
+                           """, (conv_id, pid))
 
         db.commit()
-    except:
+    except Exception as e:
         db.rollback()
-        return {"message": "Failed to create conversation!"}
+        print(f"Error creating conversation: {e}")
+        return {"message": "Failed to create conversation!"}, 500
 
-    return {"message": "Conversation created successfully", "conversation_id": conv_id}
-
+    return {"message": "Conversation created successfully", "conversation_id": conv_id}, 201
 
 @conversations_blueprint.route('/<int:conv_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_conversation"))
@@ -85,36 +83,12 @@ def get_conversation(conv_id):
         return {"message": "You are not a participant of this conversation!"}
 
     cursor.execute("""
-        SELECT id, name, created_at, type FROM conversation WHERE id = %s
+        SELECT id, name, created_at FROM conversation WHERE id = %s
     """, (conv_id,))
     conversation = cursor.fetchone()
     if conversation is None:
         return {"message": "Conversation not found!"}
     return {"message": "Success", "conversation": conversation}
-
-
-@conversations_blueprint.route('/<int:conv_id>', methods=["DELETE"])
-@swag_from(load_yaml("documentation/conversations.yaml", "delete_conversation"))
-@jwt_required()
-def delete_conversation(conv_id):
-    identity = get_jwt_identity()
-    current_user_id = get_current_user_id(identity)
-
-    cursor.execute("""
-        SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
-    """, (conv_id, current_user_id))
-    if cursor.fetchone() is None:
-        return {"message": "You are not a participant of this conversation!"}
-
-    try:
-        cursor.execute("DELETE FROM conversation WHERE id = %s", (conv_id,))
-        db.commit()
-    except:
-        db.rollback()
-        return {"message": "Failed to delete conversation!"}
-
-    return {"message": "Conversation deleted successfully"}
-
 
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_participants"))
@@ -139,7 +113,6 @@ def get_participants(conv_id):
     participants = cursor.fetchall()
     return {"message": "Success", "participants": participants}
 
-
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["POST"])
 @swag_from(load_yaml("documentation/conversations.yaml", "add_participant"))
 @jwt_required()
@@ -151,12 +124,16 @@ def add_participant(conv_id):
         SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
     """, (conv_id, current_user_id))
     if cursor.fetchone() is None:
-        return {"message": "You are not a participant of this conversation!"}
+        return {"message": "You are not a participant of this conversation!"}, 403
+
+    cursor.execute('SELECT 1 FROM "group" WHERE conversation_id = %s', (conv_id,))
+    if cursor.fetchone() is not None:
+        return {"message": "This is a group conversation. Please use the group endpoints to add members!"}, 403
 
     try:
         user_id = request.json["user_id"]
     except:
-        return {"message": "Invalid format!"}
+        return {"message": "Invalid format!"}, 400
 
     try:
         cursor.execute("""
@@ -165,10 +142,9 @@ def add_participant(conv_id):
         db.commit()
     except:
         db.rollback()
-        return {"message": "Failed to add participant!"}
+        return {"message": "Failed to add participant!"}, 500
 
-    return {"message": "Participant added successfully"}
-
+    return {"message": "Participant added successfully"}, 200
 
 @conversations_blueprint.route('/<int:conv_id>/participants/<int:user_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "remove_participant"))
@@ -181,7 +157,11 @@ def remove_participant(conv_id, user_id):
         SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
     """, (conv_id, current_user_id))
     if cursor.fetchone() is None:
-        return {"message": "You are not a participant of this conversation!"}
+        return {"message": "You are not a participant of this conversation!"}, 403
+
+    cursor.execute('SELECT 1 FROM "group" WHERE conversation_id = %s', (conv_id,))
+    if cursor.fetchone() is not None:
+        return {"message": "This is a group conversation. Please use the group endpoints to remove members!"}, 403
 
     try:
         cursor.execute("""
@@ -190,9 +170,36 @@ def remove_participant(conv_id, user_id):
         db.commit()
     except:
         db.rollback()
-        return {"message": "Failed to remove participant!"}
+        return {"message": "Failed to remove participant!"}, 500
 
-    return {"message": "Participant removed successfully"}
+    return {"message": "Participant removed successfully"}, 200
+
+
+@conversations_blueprint.route('/<int:conv_id>', methods=["DELETE"])
+@swag_from(load_yaml("documentation/conversations.yaml", "delete_conversation"))
+@jwt_required()
+def delete_conversation(conv_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    cursor.execute("""
+        SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
+    """, (conv_id, current_user_id))
+    if cursor.fetchone() is None:
+        return {"message": "You are not a participant of this conversation!"}, 403
+
+    cursor.execute('SELECT 1 FROM "group" WHERE conversation_id = %s', (conv_id,))
+    if cursor.fetchone() is not None:
+        return {"message": "This is a group conversation. Please delete the group itself using group endpoints!"}, 403
+
+    try:
+        cursor.execute("DELETE FROM conversation WHERE id = %s", (conv_id,))
+        db.commit()
+    except:
+        db.rollback()
+        return {"message": "Failed to delete conversation!"}, 500
+
+    return {"message": "Conversation deleted successfully"}, 200
 
 @conversations_blueprint.route('/<int:conv_id>/messages', methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_messages"))
@@ -228,38 +235,6 @@ def get_messages(conv_id):
     return {"message": "Success", "messages": messages}
 
 
-@conversations_blueprint.route('/<int:conv_id>/messages', methods=["POST"])
-@swag_from(load_yaml("documentation/conversations.yaml", "send_message"))
-@jwt_required()
-def send_message(conv_id):
-    identity = get_jwt_identity()
-    current_user_id = get_current_user_id(identity)
-
-    cursor.execute("""
-        SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
-    """, (conv_id, current_user_id))
-    if cursor.fetchone() is None:
-        return {"message": "You are not a participant of this conversation!"}
-
-    try:
-        text = request.json["text"]
-    except:
-        return {"message": "Invalid format!"}
-
-    try:
-        encrypted_bytes = cipher_suite.encrypt(text.encode())
-        cursor.execute("""
-                       INSERT INTO message (conversation_id, sender_id, text)
-                       VALUES (%s, %s, %s) RETURNING id
-                       """, (conv_id, current_user_id, encrypted_bytes))
-        message_id = cursor.fetchone()["id"]
-        db.commit()
-    except:
-        db.rollback()
-        return {"message": "Failed to send message!"}
-
-    return {"message": "Message sent successfully", "message_id": message_id}
-
 @conversations_blueprint.route('/<int:conv_id>/messages/<int:message_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "delete_message"))
 @jwt_required()
@@ -268,7 +243,7 @@ def delete_message(conv_id, message_id):
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-        SELECT m.sender_id, c.type 
+        SELECT m.sender_id
         FROM message m
         JOIN conversation c ON m.conversation_id = c.id
         WHERE m.id = %s AND m.conversation_id = %s
@@ -281,13 +256,6 @@ def delete_message(conv_id, message_id):
 
     if message["sender_id"] == current_user_id:
         can_delete = True
-
-    elif message["type"] == 'group':
-        cursor.execute("SELECT id_group FROM \"group\" WHERE conversation_id = %s", (conv_id,))
-        group_data = cursor.fetchone()
-
-        if group_data and check_permission(current_user_id, group_data["id_group"], "delete_messages"):
-            can_delete = True
 
     if not can_delete:
         return {"message": "You don't have permission to delete this message!"}
@@ -417,7 +385,7 @@ def delete_file(file_id):
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-        SELECT m.sender_id, m.conversation_id, c.type 
+        SELECT m.sender_id, m.conversation_id 
         FROM file f
         JOIN message m ON f.message_id = m.id
         JOIN conversation c ON m.conversation_id = c.id
@@ -438,13 +406,6 @@ def delete_file(file_id):
 
     if file_info["sender_id"] == current_user_id:
         can_delete = True
-
-    elif file_info["type"] == 'group':
-        cursor.execute("SELECT id FROM \"group\" WHERE conversation_id = %s", (file_info["conversation_id"],))
-        group_data = cursor.fetchone()
-
-        if group_data and check_permission(current_user_id, group_data["id"], "delete_messages"):
-            can_delete = True
 
     if not can_delete:
         return {"message": "You don't have permission to delete this file!"}

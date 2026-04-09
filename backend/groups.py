@@ -8,7 +8,6 @@ from helper_func import get_current_user_id, db, is_group_member, check_permissi
 groups_blueprint = Blueprint('groups', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
 
-
 @groups_blueprint.route('/', methods=['POST'])
 @swag_from(load_yaml("documentation/groups.yaml", "create_group"))
 @jwt_required()
@@ -25,20 +24,18 @@ def create_group():
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cursor:
-            # 1. Vytvorenie konverzácie pre skupinu
+
             cursor.execute("""
-                           INSERT INTO conversation (name, type)
-                           VALUES (%s, 'group') RETURNING id
+                           INSERT INTO conversation (name)
+                           VALUES (%s) RETURNING id
                            """, (name,))
             conv_id = cursor.fetchone()["id"]
 
-            # 2. Pridanie zakladateľa ako účastníka konverzácie
             cursor.execute("""
                            INSERT INTO participant (conversation_id, user_id)
                            VALUES (%s, %s)
                            """, (conv_id, user_id))
 
-            # 3. Vytvorenie skupiny s prepojením na conversation_id
             cursor.execute("""INSERT INTO "group" (name, icon, conversation_id)
                               VALUES (%s, %s, %s) RETURNING id_group""", (name, icon, conv_id))
             new_group_id = cursor.fetchone()["id_group"]
@@ -78,7 +75,7 @@ def get_groups():
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-                   SELECT g.id_group, g.name, g.create_date, g.icon, g.conversation_id
+                   SELECT g.name, g.icon
                    FROM "group" g
                             JOIN group_member gm ON g.id_group = gm.group_id
                    WHERE gm.user_id = %s
@@ -323,6 +320,7 @@ def add_group_member(group_id):
 
         db.commit()
     except Exception as e:
+        print(e)
         db.rollback()
         return {
             "message": "Failed to add member!"

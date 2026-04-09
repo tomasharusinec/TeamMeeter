@@ -2,207 +2,366 @@ get_roles:
   tags:
     - Roles
   summary: "Retrieve all roles for a specific group"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "Success"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Success"}
-          roles:
-            type: array
-            items:
-              type: object
-              properties:
-                id_role: {type: integer, example: 5}
-                name: {type: string, example: "Moderator"}
-                color: {type: string, example: "#FF5733"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Success"}
+              roles:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_role: {type: integer, example: 5}
+                    name: {type: string, example: "Moderator"}
+                    color: {type: string, example: "#FF5733"}
     403:
       description: "Forbidden - Not a member"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "You are not a member of this group!"}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You are not a member of this group!"}
 
 create_role:
   tags:
     - Roles
   summary: "Create a new role"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-    - in: body
-      name: body
       schema:
-        type: object
-        required:
-          - name
-        properties:
-          name: {type: string, example: "Admin"}
-          color: {type: string, example: "#000000"}
-          permissions:
-            type: array
-            items: {type: string}
-            example: ["create_role", "edit_role"]
-  security:
-    - Bearer: []
+        type: integer
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - name
+          properties:
+            name: {type: string, example: "Admin"}
+            color: {type: string, example: "#000000"}
+            permissions:
+              type: array
+              items: {type: string}
+              example: ["create_role", "edit_role"]
   responses:
     201:
       description: "Role created successfully"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Role created successfully"}
-          role_id: {type: integer, example: 10}
-          assigned_permissions: {type: array, items: {type: string}}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Role created successfully"}
+              role_id: {type: integer, example: 10}
+              assigned_permissions:
+                type: array
+                items: {type: string}
+                example: ["create_role", "edit_role"]
     400:
       description: "Bad Request - Invalid format"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Invalid format!"}
     403:
       description: "Forbidden - No permission"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to create role!"}
     500:
       description: "Database error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to create role!"}
 
 update_role:
   tags:
     - Roles
   summary: "Update an existing role"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
+      schema:
+        type: integer
     - in: path
       name: role_id
       required: true
-      type: integer
-    - in: body
-      name: body
       schema:
-        type: object
-        properties:
-          name: {type: string}
-          color: {type: string}
-          permissions: {type: array, items: {type: string}}
-  security:
-    - Bearer: []
+        type: integer
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            name: {type: string, example: "Super Admin"}
+            color: {type: string, example: "#FF0000"}
+            permissions:
+              type: array
+              items: {type: string}
+              example: ["create_role", "edit_role", "delete_role"]
   responses:
     200:
       description: "Role updated successfully"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Role updated successfully"}
     400:
       description: "Invalid format"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Invalid format!"}
     403:
-      description: "Forbidden"
+      description: "Forbidden - No permission"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to manage roles!"}
     500:
-      description: "Internal Server Error"
+      description: "Database error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to update role!"}
 
 delete_role:
   tags:
     - Roles
   summary: "Delete a role"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
+      schema:
+        type: integer
     - in: path
       name: role_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "Role deleted successfully"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Role deleted successfully"}
     403:
-      description: "Forbidden"
+      description: "Forbidden - No permission"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to manage roles!"}
     500:
-      description: "Failed to delete"
+      description: "Database error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to delete role!"}
 
 get_user_roles:
   tags:
     - Roles
   summary: "Get roles assigned to a user in a group"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
+      schema:
+        type: integer
     - in: path
       name: user_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "Success"
-      schema:
-        type: object
-        properties:
-          message: {type: string, example: "Success"}
-          roles: {type: array, items: {type: object}}
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Success"}
+              roles:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_role: {type: integer, example: 5}
+                    name: {type: string, example: "Moderator"}
+                    color: {type: string, example: "#FF5733"}
+    403:
+      description: "Forbidden - Not a member"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You are not a member of this group!"}
 
 assign_user_role:
   tags:
     - Roles
   summary: "Assign a role to a user"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
-    - in: body
-      name: body
       schema:
-        type: object
-        required:
-          - username
-          - role_id
-        properties:
-          username: {type: string}
-          role_id: {type: integer}
-  security:
-    - Bearer: []
+        type: integer
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - username
+            - role_id
+          properties:
+            username: {type: string, example: "jozkoplet"}
+            role_id: {type: integer, example: 5}
   responses:
     200:
       description: "Role assigned successfully"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Role assigned successfully"}
+    400:
+      description: "Invalid format"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Invalid format!"}
+    403:
+      description: "Forbidden - No permission"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to manage roles!"}
     404:
       description: "User or Role not found"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "User not found or is not a member of this group!"}
     500:
-      description: "Failed to assign"
+      description: "Database error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to assign role!"}
 
 remove_user_role:
   tags:
     - Roles
   summary: "Remove a role from a user"
+  security:
+    - Bearer: []
   parameters:
     - in: path
       name: group_id
       required: true
-      type: integer
+      schema:
+        type: integer
     - in: path
       name: user_id
       required: true
-      type: integer
+      schema:
+        type: integer
     - in: path
       name: role_id
       required: true
-      type: integer
-  security:
-    - Bearer: []
+      schema:
+        type: integer
   responses:
     200:
       description: "Role removed successfully"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Role removed successfully"}
     403:
-      description: "Forbidden"
+      description: "Forbidden - No permission"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have permission to manage roles!"}
     500:
-      description: "Failed to remove"
+      description: "Database error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Failed to remove role!"}
