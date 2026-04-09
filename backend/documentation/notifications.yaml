@@ -1,0 +1,96 @@
+get_notifications:
+  tags:
+    - Notifications
+  summary: "Get all notifications for the current user"
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Success"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Success"}
+          notifications:
+            type: array
+            items:
+              type: object
+              properties:
+                id_notification: {type: integer, example: 12}
+                type: {type: string, example: "new_message"}
+                created_at: {type: string, format: "date-time", example: "2026-04-09T10:55:00Z"}
+
+create_notification:
+  tags:
+    - Notifications
+  summary: "Create a new notification"
+  parameters:
+    - in: body
+      name: body
+      schema:
+        type: object
+        required:
+          - type
+          - user_ids
+        properties:
+          type: {type: string, example: "activity_invite"}
+          user_ids:
+            type: array
+            items: {type: integer}
+            example: [1, 2, 5]
+          message_id: {type: integer, example: 42}
+          activity_id: {type: integer, example: 7}
+  security:
+    - Bearer: []
+  responses:
+    201:
+      description: "Notification created successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Notification created successfully"}
+          notification_id: {type: integer, example: 15}
+    400:
+      description: "Bad Request - Invalid format"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Invalid format!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to create notification!"}
+
+delete_notification:
+  tags:
+    - Notifications
+  summary: "Delete a specific notification for the current user"
+  parameters:
+    - in: path
+      name: notif_id
+      required: true
+      type: integer
+      description: "ID of the notification to delete"
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Notification deleted successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Notification deleted successfully"}
+    404:
+      description: "Not Found - Notification does not exist or belong to user"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Notification not found!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to delete notification!"}

@@ -11,7 +11,7 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 
 @notifications_blueprint.route('', methods=["GET"])
 @jwt_required()
-#@swag_from(load_yaml("documentation/notifications.yaml", "get_notifications"))
+@swag_from(load_yaml("documentation/notifications.yaml", "get_notifications"))
 def get_notifications():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -33,7 +33,7 @@ def get_notifications():
 
 @notifications_blueprint.route('', methods=["POST"])
 @jwt_required()
-#@swag_from(load_yaml("documentation/notifications.yaml", "create_notification"))
+@swag_from(load_yaml("documentation/notifications.yaml", "create_notification"))
 def create_notification():
     try:
         notif_type = request.json["type"]
@@ -85,7 +85,7 @@ def create_notification():
 
 @notifications_blueprint.route('/<int:notif_id>', methods=["DELETE"])
 @jwt_required()
-#@swag_from(load_yaml("documentation/notifications.yaml", "delete_notification"))
+@swag_from(load_yaml("documentation/notifications.yaml", "delete_notification"))
 def delete_notification(notif_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)

@@ -34,7 +34,8 @@ template = {
 app.config['SWAGGER'] = {
     'title': "TeamMeeter's API",
     'uiversion': 3,
-    'openapi': '3.0.3'
+    'openapi': '3.0.3',
+    'specs_route': '/documentation'
 }
 
 swagger = Swagger(app, template=template)
