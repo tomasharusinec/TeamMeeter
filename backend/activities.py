@@ -13,6 +13,57 @@ def get_activity_info(activity_id):
     cursor.execute("SELECT group_id, creator_id FROM activity WHERE id_activity = %s", (activity_id,))
     return cursor.fetchone()
 
+def is_individual_activity_owner(activity_info, current_user_id):
+    return activity_info["group_id"] is None and activity_info["creator_id"] == current_user_id
+
+
+@activities_blueprint.route('/individual', methods=["GET"])
+@swag_from(load_yaml("documentation/activities.yaml", "get_individual_activities"))
+@jwt_required()
+def get_individual_activities():
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    cursor.execute("""
+        SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.creator_id, u.username AS creator_username
+        FROM activity a
+        JOIN "user" u ON a.creator_id = u.id_registration
+        WHERE a.group_id IS NULL AND a.creator_id = %s
+        ORDER BY a.creation_date DESC
+    """, (current_user_id,))
+    activities = cursor.fetchall()
+    return {"message": "Success", "activities": activities}, 200
+
+
+@activities_blueprint.route('/individual', methods=["POST"])
+@swag_from(load_yaml("documentation/activities.yaml", "create_individual_activity"))
+@jwt_required()
+def create_individual_activity():
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    try:
+        name = request.json["name"]
+        description = request.json.get("description")
+        deadline = request.json.get("deadline")
+    except:
+        return {"message": "Invalid format!"}, 400
+
+    try:
+        cursor.execute("""
+            INSERT INTO activity (name, description, deadline, creator_id, group_id)
+            VALUES (%s, %s, %s, %s, NULL)
+            RETURNING id_activity
+        """, (name, description, deadline, current_user_id))
+        activity_id = cursor.fetchone()["id_activity"]
+        db.commit()
+    except:
+        db.rollback()
+        return {"message": "Failed to create activity!"}, 500
+
+    return {"message": "Activity created successfully", "activity_id": activity_id}, 201
+
+
 @activities_blueprint.route('/groups/<int:group_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/activities.yaml", "get_activities"))
 @jwt_required()
@@ -85,15 +136,19 @@ def get_activity(activity_id):
 
     group_id = info["group_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        if info["creator_id"] != current_user_id:
+            return {"message": "You don't have access to this activity!"}, 403
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
-    if not check_permission(current_user_id, group_id, "view_activities"):
-        return {"message": "You don't have permission to view activities!"}, 403
+        if not check_permission(current_user_id, group_id, "view_activities"):
+            return {"message": "You don't have permission to view activities!"}, 403
 
     cursor.execute("""
         SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline,
-               a.creator_id, u.username AS creator_username
+               a.creator_id, a.group_id, u.username AS creator_username
         FROM activity a
         JOIN "user" u ON a.creator_id = u.id_registration
         WHERE a.id_activity = %s
@@ -116,12 +171,16 @@ def update_activity(activity_id):
     group_id = info["group_id"]
     creator_id = info["creator_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        if creator_id != current_user_id:
+            return {"message": "You don't have access to this activity!"}, 403
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
-    is_creator = (current_user_id == creator_id)
-    if not is_creator and not check_permission(current_user_id, group_id, "edit_activity"):
-        return {"message": "You don't have permission to edit this activity!"}, 403
+        is_creator = (current_user_id == creator_id)
+        if not is_creator and not check_permission(current_user_id, group_id, "edit_activity"):
+            return {"message": "You don't have permission to edit this activity!"}, 403
 
     try:
         name = request.json.get("name")
@@ -160,12 +219,16 @@ def delete_activity(activity_id):
     group_id = info["group_id"]
     creator_id = info["creator_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        if creator_id != current_user_id:
+            return {"message": "You don't have access to this activity!"}, 403
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
-    is_creator = (current_user_id == creator_id)
-    if not is_creator and not check_permission(current_user_id, group_id, "delete_activity"):
-        return {"message": "You don't have permission to delete this activity!"}, 403
+        is_creator = (current_user_id == creator_id)
+        if not is_creator and not check_permission(current_user_id, group_id, "delete_activity"):
+            return {"message": "You don't have permission to delete this activity!"}, 403
 
     try:
         cursor.execute("DELETE FROM activity WHERE id_activity = %s", (activity_id,))
@@ -190,14 +253,18 @@ def get_activity_users(activity_id):
 
     group_id = info["group_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        if info["creator_id"] != current_user_id:
+            return {"message": "You don't have access to this activity!"}, 403
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
     cursor.execute("""
         SELECT u.id_registration, u.username, us.name, us.surname
         FROM activity_user au
         JOIN "user" u ON au.id_user = u.id_registration
-        JOIN user_setting us ON u.id_user_settings = us.id_user_setting
+        JOIN user_setting us ON u.id_registration = us.id_user
         WHERE au.id_activity = %s
     """, (activity_id,))
     users = cursor.fetchall()
@@ -217,11 +284,15 @@ def assign_activity_user(activity_id):
 
     group_id = info["group_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        if info["creator_id"] != current_user_id:
+            return {"message": "You don't have access to this activity!"}, 403
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
-    if not check_permission(current_user_id, group_id, "assign_activity_user"):
-        return {"message": "You don't have permission to assign users to activities!"}, 403
+        if not check_permission(current_user_id, group_id, "assign_activity_user"):
+            return {"message": "You don't have permission to assign users to activities!"}, 403
 
     try:
         user_id = request.json["user_id"]
@@ -253,11 +324,15 @@ def remove_activity_user(activity_id, user_id):
 
     group_id = info["group_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        if info["creator_id"] != current_user_id:
+            return {"message": "You don't have access to this activity!"}, 403
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
-    if not check_permission(current_user_id, group_id, "assign_activity_user"):
-        return {"message": "You don't have permission to remove users from activities!"}, 403
+        if not check_permission(current_user_id, group_id, "assign_activity_user"):
+            return {"message": "You don't have permission to remove users from activities!"}, 403
 
     try:
         cursor.execute("""
@@ -269,7 +344,6 @@ def remove_activity_user(activity_id, user_id):
         return {"message": "Failed to remove user from activity!"}, 500
 
     return {"message": "User removed from activity successfully"}, 200
-
 
 @activities_blueprint.route('/<int:activity_id>/roles', methods=["GET"])
 @swag_from(load_yaml("documentation/activities.yaml", "get_activity_roles"))
@@ -284,8 +358,12 @@ def get_activity_roles(activity_id):
 
     group_id = info["group_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        if info["creator_id"] != current_user_id:
+            return {"message": "You don't have access to this activity!"}, 403
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
     cursor.execute("""
         SELECT r.id_role, r.name, r.color
@@ -310,11 +388,14 @@ def assign_activity_role(activity_id):
 
     group_id = info["group_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        return {"message": "Cannot assign roles to individual activities!"}, 400
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
-    if not check_permission(current_user_id, group_id, "assign_activity_role"):
-        return {"message": "You don't have permission to assign roles to activities!"}, 403
+        if not check_permission(current_user_id, group_id, "assign_activity_role"):
+            return {"message": "You don't have permission to assign roles to activities!"}, 403
 
     try:
         role_id = request.json["role_id"]
@@ -346,11 +427,14 @@ def remove_activity_role(activity_id, role_id):
 
     group_id = info["group_id"]
 
-    if not is_group_member(current_user_id, group_id):
-        return {"message": "You are not a member of this group!"}, 403
+    if group_id is None:
+        return {"message": "Cannot remove roles from individual activities!"}, 400
+    else:
+        if not is_group_member(current_user_id, group_id):
+            return {"message": "You are not a member of this group!"}, 403
 
-    if not check_permission(current_user_id, group_id, "assign_activity_role"):
-        return {"message": "You don't have permission to remove roles from activities!"}, 403
+        if not check_permission(current_user_id, group_id, "assign_activity_role"):
+            return {"message": "You don't have permission to remove roles from activities!"}, 403
 
     try:
         cursor.execute("""
@@ -372,15 +456,16 @@ def get_my_activities():
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-        SELECT DISTINCT a.id_activity, a.name, a.description, a.creation_date, a.deadline, g.name AS group_name, u_creator.username AS creator_username
+        SELECT DISTINCT a.id_activity, a.name, a.description, a.creation_date, a.deadline,
+               a.group_id, g.name AS group_name, u_creator.username AS creator_username
         FROM activity a
-        JOIN "group" g ON a.group_id = g.id_group
+        LEFT JOIN "group" g ON a.group_id = g.id_group
         JOIN "user" u_creator ON a.creator_id = u_creator.id_registration
         LEFT JOIN activity_user au ON a.id_activity = au.id_activity
         LEFT JOIN activity_role ar ON a.id_activity = ar.activity_id
         LEFT JOIN user_role ur ON ar.role_id = ur.role_id AND ur.user_id = %s
-        WHERE au.id_user = %s OR ur.user_id = %s
-    """, (current_user_id, current_user_id, current_user_id))
+        WHERE au.id_user = %s OR ur.user_id = %s OR (a.group_id IS NULL AND a.creator_id = %s)
+    """, (current_user_id, current_user_id, current_user_id, current_user_id))
     activities = cursor.fetchall()
 
     return {"message": "Success", "activities": activities}, 200

@@ -1,3 +1,69 @@
+get_individual_activities:
+  tags:
+    - Activities
+  summary: "Retrieve all individual (personal) activities for the current user"
+  description: "Returns all activities that are not tied to any group and were created by the current user."
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "List of individual activities retrieved successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Success"}
+          activities:
+            type: array
+            items:
+              type: object
+              properties:
+                id_activity: {type: integer, example: 1}
+                name: {type: string, example: "Dokoncit projekt"}
+                description: {type: string, example: "Analyza a implementaci"}
+                creation_date: {type: string, example: "2023-10-27T10:00:00"}
+                deadline: {type: string, example: "2023-11-05T12:00:00"}
+                creator_id: {type: integer, example: 1}
+                creator_username: {type: string, example: "jozkoplet"}
+
+create_individual_activity:
+  tags:
+    - Activities
+  summary: "Create a new individual (personal) activity"
+  description: "Creates a personal activity not tied to any group. The current user becomes the creator and owner."
+  parameters:
+    - in: body
+      name: body
+      schema:
+        type: object
+        required:
+          - name
+        properties:
+          name: {type: string, example: "Dokoncit projekt"}
+          description: {type: string, example: "Analyza a implementaci"}
+          deadline: {type: string, example: "2023-11-05T12:00:00"}
+  security:
+    - Bearer: []
+  responses:
+    201:
+      description: "Activity created successfully"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Activity created successfully"}
+          activity_id: {type: integer, example: 1}
+    400:
+      description: "Invalid format"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Invalid format!"}
+    500:
+      description: "Database error"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Failed to create activity!"}
+
 get_activities:
   tags:
     - Activities
@@ -87,6 +153,7 @@ get_activity:
   tags:
     - Activities
   summary: "Get a specific activity by ID"
+  description: "Retrieves a specific activity. For group activities, requires group membership and view permission. For individual activities, only the creator can access it."
   parameters:
     - in: path
       name: activity_id
@@ -110,13 +177,14 @@ get_activity:
               creation_date: {type: string, example: "2023-10-27T10:00:00"}
               deadline: {type: string, example: "2023-11-05T12:00:00"}
               creator_id: {type: integer, example: 1}
+              group_id: {type: integer, example: 1, nullable: true}
               creator_username: {type: string, example: "jozkoplet"}
     403:
-      description: "Not a member or no permission"
+      description: "No access (not a group member, no permission, or not the owner of individual activity)"
       schema:
         type: object
         properties:
-          message: {type: string, example: "You are not a member of this group!"}
+          message: {type: string, example: "You don't have access to this activity!"}
     404:
       description: "Activity not found"
       schema:
@@ -128,6 +196,7 @@ update_activity:
   tags:
     - Activities
   summary: "Update an existing activity"
+  description: "Updates an activity. For group activities, requires group membership and edit permission (or being the creator). For individual activities, only the creator can edit."
   parameters:
     - in: path
       name: activity_id
@@ -157,11 +226,11 @@ update_activity:
         properties:
           message: {type: string, example: "Invalid format!"}
     403:
-      description: "Not a member or no permission"
+      description: "No access (not a group member, no permission, or not the owner of individual activity)"
       schema:
         type: object
         properties:
-          message: {type: string, example: "You don't have permission to edit this activity!"}
+          message: {type: string, example: "You don't have access to this activity!"}
     404:
       description: "Activity not found"
       schema:
@@ -179,6 +248,7 @@ delete_activity:
   tags:
     - Activities
   summary: "Delete an activity"
+  description: "Deletes an activity. For group activities, requires group membership and delete permission (or being the creator). For individual activities, only the creator can delete."
   parameters:
     - in: path
       name: activity_id
@@ -194,11 +264,11 @@ delete_activity:
         properties:
           message: {type: string, example: "Activity deleted successfully"}
     403:
-      description: "Not a member or no permission"
+      description: "No access (not a group member, no permission, or not the owner of individual activity)"
       schema:
         type: object
         properties:
-          message: {type: string, example: "You don't have permission to delete this activity!"}
+          message: {type: string, example: "You don't have access to this activity!"}
     404:
       description: "Activity not found"
       schema:
@@ -216,6 +286,7 @@ get_activity_users:
   tags:
     - Activities
   summary: "Retrieve all users assigned to a specific activity"
+  description: "For group activities, requires group membership. For individual activities, only the creator can access."
   parameters:
     - in: path
       name: activity_id
@@ -240,11 +311,11 @@ get_activity_users:
                 name: {type: string, example: "Jozef"}
                 surname: {type: string, example: "Novy"}
     403:
-      description: "Not a member of the group"
+      description: "No access (not a group member or not the owner of individual activity)"
       schema:
         type: object
         properties:
-          message: {type: string, example: "You are not a member of this group!"}
+          message: {type: string, example: "You don't have access to this activity!"}
     404:
       description: "Activity not found"
       schema:
@@ -256,6 +327,7 @@ assign_activity_user:
   tags:
     - Activities
   summary: "Assign a user to an activity"
+  description: "For group activities, requires group membership and assign_activity_user permission. For individual activities, only the creator can assign users."
   parameters:
     - in: path
       name: activity_id
@@ -285,11 +357,11 @@ assign_activity_user:
         properties:
           message: {type: string, example: "Invalid format!"}
     403:
-      description: "Not a member or no permission"
+      description: "No access (not a group member, no permission, or not the owner of individual activity)"
       schema:
         type: object
         properties:
-          message: {type: string, example: "You don't have permission to assign users to activities!"}
+          message: {type: string, example: "You don't have access to this activity!"}
     404:
       description: "Activity not found"
       schema:
@@ -307,6 +379,7 @@ remove_activity_user:
   tags:
     - Activities
   summary: "Remove a user from an activity"
+  description: "For group activities, requires group membership and assign_activity_user permission. For individual activities, only the creator can remove users."
   parameters:
     - in: path
       name: activity_id
@@ -326,11 +399,11 @@ remove_activity_user:
         properties:
           message: {type: string, example: "User removed from activity successfully"}
     403:
-      description: "Not a member or no permission"
+      description: "No access (not a group member, no permission, or not the owner of individual activity)"
       schema:
         type: object
         properties:
-          message: {type: string, example: "You don't have permission to remove users from activities!"}
+          message: {type: string, example: "You don't have access to this activity!"}
     404:
       description: "Activity not found"
       schema:
@@ -348,6 +421,7 @@ get_activity_roles:
   tags:
     - Activities
   summary: "Retrieve all roles assigned to a specific activity"
+  description: "For group activities, requires group membership. For individual activities, only the creator can access."
   parameters:
     - in: path
       name: activity_id
@@ -371,11 +445,11 @@ get_activity_roles:
                 name: {type: string, example: "Frontend Developer"}
                 color: {type: string, example: "#FF5733"}
     403:
-      description: "Not a member of the group"
+      description: "No access (not a group member or not the owner of individual activity)"
       schema:
         type: object
         properties:
-          message: {type: string, example: "You are not a member of this group!"}
+          message: {type: string, example: "You don't have access to this activity!"}
     404:
       description: "Activity not found"
       schema:
@@ -387,6 +461,7 @@ assign_activity_role:
   tags:
     - Activities
   summary: "Assign a role to an activity"
+  description: "Assigns a role to a group activity. Cannot be used with individual activities since roles are tied to groups."
   parameters:
     - in: path
       name: activity_id
@@ -410,11 +485,11 @@ assign_activity_role:
         properties:
           message: {type: string, example: "Role assigned to activity successfully"}
     400:
-      description: "Invalid format"
+      description: "Invalid format or individual activity"
       schema:
         type: object
         properties:
-          message: {type: string, example: "Invalid format!"}
+          message: {type: string, example: "Cannot assign roles to individual activities!"}
     403:
       description: "Not a member or no permission"
       schema:
@@ -438,6 +513,7 @@ remove_activity_role:
   tags:
     - Activities
   summary: "Remove a role from an activity"
+  description: "Removes a role from a group activity. Cannot be used with individual activities since roles are tied to groups."
   parameters:
     - in: path
       name: activity_id
@@ -456,6 +532,12 @@ remove_activity_role:
         type: object
         properties:
           message: {type: string, example: "Role removed from activity successfully"}
+    400:
+      description: "Individual activity"
+      schema:
+        type: object
+        properties:
+          message: {type: string, example: "Cannot remove roles from individual activities!"}
     403:
       description: "Not a member or no permission"
       schema:
@@ -478,7 +560,8 @@ remove_activity_role:
 get_my_activities:
   tags:
     - Activities
-  summary: "Retrieve all activities assigned to the current user (directly or via role)"
+  summary: "Retrieve all activities assigned to the current user"
+  description: "Returns all activities where the user is directly assigned, assigned via role, or is the creator of an individual activity. group_id and group_name will be null for individual activities."
   security:
     - Bearer: []
   responses:
@@ -498,5 +581,6 @@ get_my_activities:
                 description: {type: string, example: "Analyza a implementacia"}
                 creation_date: {type: string, example: "2023-10-27T10:00:00"}
                 deadline: {type: string, example: "2023-11-05T12:00:00"}
-                group_name: {type: string, example: "Tim Alfa"}
+                group_id: {type: integer, example: 1, nullable: true}
+                group_name: {type: string, example: "Tim Alfa", nullable: true}
                 creator_username: {type: string, example: "jozkoplet"}
