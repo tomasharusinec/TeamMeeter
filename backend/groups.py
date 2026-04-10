@@ -11,6 +11,7 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 @groups_blueprint.route('/', methods=['POST'])
 @swag_from(load_yaml("documentation/groups.yaml", "create_group"))
 @jwt_required()
+# Creates a group, its conversation and sets creator as Manager
 def create_group():
     identity = get_jwt_identity()
     user_id = get_current_user_id(identity)
@@ -70,6 +71,7 @@ def create_group():
 @groups_blueprint.route('/', methods=["GET"])
 @swag_from(load_yaml("documentation/groups.yaml", "get_groups"))
 @jwt_required()
+# Lists groups where the user is a member
 def get_groups():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -77,7 +79,7 @@ def get_groups():
     cursor.execute("""
                    SELECT g.name, g.icon
                    FROM "group" g
-                            JOIN group_member gm ON g.id_group = gm.group_id
+                   JOIN group_member gm ON g.id_group = gm.group_id
                    WHERE gm.user_id = %s
                    """, (current_user_id,))
     groups = cursor.fetchall()
@@ -90,6 +92,7 @@ def get_groups():
 @groups_blueprint.route('/<int:group_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/groups.yaml", "get_group"))
 @jwt_required()
+# Gets details of a specific group. Requires membership.
 def get_group(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -118,6 +121,8 @@ def get_group(group_id):
 @groups_blueprint.route('/<int:group_id>', methods=["PUT"])
 @swag_from(load_yaml("documentation/groups.yaml", "update_group"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Updates group details. Requires membership and 'manage_group' permission.
 def update_group(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -150,7 +155,7 @@ def update_group(group_id):
 
         updated_group = cursor.fetchone()
 
-        # Ak sa zmenilo meno skupiny, synchronizujeme aj meno konverzácie
+        # Ak sa zmenilo meno skupiny, synchronizujeme aj meno konverzÃ¡cie
         if name and updated_group and updated_group["conversation_id"]:
             cursor.execute("""
                            UPDATE conversation
@@ -173,6 +178,8 @@ def update_group(group_id):
 @groups_blueprint.route('/<int:group_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/groups.yaml", "delete_group"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Deletes a group and its conversation. Requires membership and 'delete_group' permission.
 def delete_group(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -193,7 +200,6 @@ def delete_group(group_id):
 
         cursor.execute('DELETE FROM "group" WHERE id_group = %s', (group_id,))
 
-        # Zmazanie priradenej konverzácie (a kaskádovo aj jej účastníkov)
         if conv_data and conv_data["conversation_id"]:
             conv_id = conv_data["conversation_id"]
             cursor.execute('DELETE FROM participant WHERE conversation_id = %s', (conv_id,))
@@ -214,6 +220,7 @@ def delete_group(group_id):
 @groups_blueprint.route('/<int:group_id>/members', methods=["GET"])
 @swag_from(load_yaml("documentation/groups.yaml", "get_group_members"))
 @jwt_required()
+# Lists all members of a group. Requires group membership.
 def get_group_members(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -245,6 +252,8 @@ def get_group_members(group_id):
 @groups_blueprint.route('/<int:group_id>/members', methods=["POST"])
 @swag_from(load_yaml("documentation/groups.yaml", "add_group_member"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Adds a new member to a group with role 'Member'. Requires membership and 'add_user' permission.
 def add_group_member(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -308,8 +317,6 @@ def add_group_member(group_id):
                            """, (role_id,))
 
         cursor.execute('INSERT INTO user_role (user_id, role_id) VALUES (%s, %s)', (user_id, role_id))
-
-        # Pridanie používateľa do konverzácie skupiny
         cursor.execute('SELECT conversation_id FROM "group" WHERE id_group = %s', (group_id,))
         conv_data = cursor.fetchone()
         if conv_data and conv_data["conversation_id"]:
@@ -334,6 +341,8 @@ def add_group_member(group_id):
 @groups_blueprint.route('/<int:group_id>/members/<int:user_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/groups.yaml", "remove_group_member"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Removes a member from a group and its conversation. Requires membership and 'kick_user' permission.
 def remove_group_member(group_id, user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -350,13 +359,16 @@ def remove_group_member(group_id, user_id):
 
     try:
         cursor.execute("""
+                        DELETE FROM user_role 
+                        WHERE user_id = %s
+                        """, (user_id, ))
+        cursor.execute("""
                        DELETE
                        FROM group_member
                        WHERE group_id = %s
                          AND user_id = %s
                        """, (group_id, user_id))
 
-        # Odstránenie používateľa z konverzácie skupiny
         cursor.execute('SELECT conversation_id FROM "group" WHERE id_group = %s', (group_id,))
         conv_data = cursor.fetchone()
         if conv_data and conv_data["conversation_id"]:

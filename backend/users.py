@@ -1,3 +1,4 @@
+from datetime import datetime
 from flasgger import swag_from
 from flask import request
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -36,10 +37,19 @@ def update_user(user_id):
     try:
         name = request.json.get("name")
         surname = request.json.get("surname")
-        birthdate = request.json.get("birthdate")
+        birthdate_str = request.json.get("birthdate")
         profile_picture = request.json.get("profile_picture")
     except:
         return {"message": "Invalid format!"}
+
+    if birthdate_str:
+
+        birthdate = datetime.strptime(birthdate_str, '%Y-%m-%d').date()
+
+        today = datetime.now().date()
+
+        if birthdate > today:
+            return {"message": "Invalid birthdate"}, 400
 
     try:
         cursor.execute("""
@@ -49,7 +59,7 @@ def update_user(user_id):
                 birthdate = COALESCE(%s, birthdate),
                 profile_picture = COALESCE(%s, profile_picture)
             WHERE id_user_setting = (SELECT id_user_settings FROM "user" WHERE id_registration = %s)
-        """, (name, surname, birthdate, profile_picture, user_id))
+        """, (name, surname, birthdate_str, profile_picture, user_id))
         db.commit()
     except:
         db.rollback()

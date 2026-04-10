@@ -1,20 +1,22 @@
-import io
 import os
+import io
 from flasgger import swag_from
 from flask import request, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
-from helper_func import db, get_current_user_id, check_permission, load_yaml
+from helper_func import db, get_current_user_id, load_yaml
 from cryptography.fernet import Fernet
 
 conversations_blueprint = Blueprint('/conversations', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
-cipher_suite = Fernet(os.getenv("MESSAGE_ENCRYPTION_KEY"))
+cipher_suite = Fernet(os.getenv("MESSAGE_ENCRYPTION_KEY"))  # AI generated
+
 
 @conversations_blueprint.route('/', methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_conversations"))
 @jwt_required()
+# Retrieves all conversations for the authenticated user
 def get_conversations():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -28,9 +30,12 @@ def get_conversations():
     conversations = cursor.fetchall()
     return {"message": "Success", "conversations": conversations}
 
+
 @conversations_blueprint.route('/', methods=["POST"])
 @swag_from(load_yaml("documentation/conversations.yaml", "create_conversation"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Creates a new conversation with participants
 def create_conversation():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -39,7 +44,6 @@ def create_conversation():
         return {"message": "Invalid format! JSON required."}, 400
 
     name = request.json.get("name")
-
     participant_ids = request.json.get("participant_ids", request.json.get("participants", []))
 
     if not isinstance(participant_ids, list):
@@ -69,9 +73,11 @@ def create_conversation():
 
     return {"message": "Conversation created successfully", "conversation_id": conv_id}, 201
 
+
 @conversations_blueprint.route('/<int:conv_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_conversation"))
 @jwt_required()
+# Gets details of a specific conversation. User must be a participant.
 def get_conversation(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -90,9 +96,11 @@ def get_conversation(conv_id):
         return {"message": "Conversation not found!"}
     return {"message": "Success", "conversation": conversation}
 
+
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_participants"))
 @jwt_required()
+# Returns list of participants in a conversation. User must be a participant
 def get_participants(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -103,6 +111,7 @@ def get_participants(conv_id):
     if cursor.fetchone() is None:
         return {"message": "You are not a participant of this conversation!"}
 
+    # Query below was generated using AI (Gemini)
     cursor.execute("""
         SELECT u.id_registration, u.username, us.name, us.surname
         FROM participant p
@@ -113,9 +122,11 @@ def get_participants(conv_id):
     participants = cursor.fetchall()
     return {"message": "Success", "participants": participants}
 
+
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["POST"])
 @swag_from(load_yaml("documentation/conversations.yaml", "add_participant"))
 @jwt_required()
+# Adds a participant to a private (not a group) conversation. User must be a participant.
 def add_participant(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -146,9 +157,11 @@ def add_participant(conv_id):
 
     return {"message": "Participant added successfully"}, 200
 
+
 @conversations_blueprint.route('/<int:conv_id>/participants/<int:user_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "remove_participant"))
 @jwt_required()
+# Removes a participant from a private (not a group) conversation. User must be a participant.
 def remove_participant(conv_id, user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -178,6 +191,7 @@ def remove_participant(conv_id, user_id):
 @conversations_blueprint.route('/<int:conv_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "delete_conversation"))
 @jwt_required()
+# Deletes a private (not a group) conversation. User must be a participant.
 def delete_conversation(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -201,9 +215,12 @@ def delete_conversation(conv_id):
 
     return {"message": "Conversation deleted successfully"}, 200
 
+
 @conversations_blueprint.route('/<int:conv_id>/messages', methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_messages"))
 @jwt_required()
+# This function was generated using AI (Gemini) and manually refined
+# Gets all messages from a conversation and decrypts them. User must be participant.
 def get_messages(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -215,10 +232,13 @@ def get_messages(conv_id):
         return {"message": "You are not a participant of this conversation!"}
 
     cursor.execute("""
-        SELECT m.id, m.conversation_id, m.sender_id, m.text,
-               u.username AS sender_username
+        SELECT m.id, m.conversation_id, m.sender_id, m.text, u.username AS sender_username,
+               CASE WHEN f.id IS NOT NULL THEN
+                   json_build_object('id', f.id, 'name', f.name, 'extension', f.extension)
+               ELSE NULL END AS file
         FROM message m
         JOIN "user" u ON m.sender_id = u.id_registration
+        LEFT JOIN file f ON m.file_id = f.id
         WHERE m.conversation_id = %s
         ORDER BY m.id ASC
     """, (conv_id,))
@@ -228,9 +248,8 @@ def get_messages(conv_id):
         try:
             decrypted_bytes = cipher_suite.decrypt(bytes(msg["text"]))
             msg["text"] = decrypted_bytes.decode()
-        except Exception:
+        except:
             msg["text"] = "[Decryption Error]"
-
 
     return {"message": "Success", "messages": messages}
 
@@ -238,6 +257,8 @@ def get_messages(conv_id):
 @conversations_blueprint.route('/<int:conv_id>/messages/<int:message_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "delete_message"))
 @jwt_required()
+# This function was generated using AI (Gemini)
+# Deletes a specific message. User must be the sender.
 def delete_message(conv_id, message_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -270,116 +291,48 @@ def delete_message(conv_id, message_id):
     return {"message": "Message deleted successfully"}
 
 
-@conversations_blueprint.route('/messages/<int:message_id>/files', methods=["GET"])
-@swag_from(load_yaml("documentation/conversations.yaml", "get_files"))
-@jwt_required()
-def get_files(message_id):
-    identity = get_jwt_identity()
-    current_user_id = get_current_user_id(identity)
-
-    cursor.execute("""
-        SELECT 1 FROM message m
-        JOIN participant p ON m.conversation_id = p.conversation_id
-        WHERE m.id = %s AND p.user_id = %s
-    """, (message_id, current_user_id))
-    if cursor.fetchone() is None:
-        return {"message": "You don't have access to this message!"}
-
-    cursor.execute("""
-        SELECT id, message_id, name, extension FROM file WHERE message_id = %s
-    """, (message_id,))
-    files = cursor.fetchall()
-    return {"message": "Success", "files": files}
-
-
-@conversations_blueprint.route('/messages/<int:message_id>/files', methods=["POST"])
-@swag_from(load_yaml("documentation/conversations.yaml", "upload_file"))
-@jwt_required()
-def upload_file(message_id):
-    identity = get_jwt_identity()
-    current_user_id = get_current_user_id(identity)
-
-    cursor.execute("""
-        SELECT sender_id FROM message WHERE id = %s
-    """, (message_id,))
-    message = cursor.fetchone()
-
-    if message is None:
-        return {"message": "Message not found!"}
-    if message["sender_id"] != current_user_id:
-        return {"message": "You can only attach files to your own messages!"}
-
-    try:
-        content = request.files["content"]
-        original_filename = content.filename
-        name, extension = os.path.splitext(original_filename)
-        extension = content.content_type.split('/')[-1]
-        content = content.read()
-
-        if not content:
-            return {"message": "File is empty!"}
-    except:
-        return {"message": "Invalid format!"}
-
-    try:
-        cursor.execute("""
-                INSERT INTO file (message_id, name, extension, content) 
-                VALUES (%s, %s, %s, %s)
-                RETURNING id
-            """, (message_id, name, extension, content))
-
-        file_id = cursor.fetchone()["id"]
-        db.commit()
-    except:
-        db.rollback()
-        return {"message": "Failed to upload file!"}
-
-    return {
-        "1": "File uploaded successfully",
-        "file_id": file_id,
-        "name": name,
-        "extension": extension
-    }
-
-
 @conversations_blueprint.route('/files/<int:file_id>', methods=["GET"])
-@swag_from(load_yaml("documentation/conversations.yaml", "download_file"))
+@swag_from(load_yaml("documentation/conversations.yaml", "get_file"))
 @jwt_required()
-def download_file(file_id):
+# Downloads an attached file. User must be a participant of the conversation.
+def get_file(file_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-        SELECT f.name, f.extension, f.content, m.conversation_id
+        SELECT f.name, f.extension, f.content, m.conversation_id 
         FROM file f
-        JOIN message m ON f.message_id = m.id
+        JOIN message m ON f.id = m.file_id
         WHERE f.id = %s
     """, (file_id,))
-    file_data = cursor.fetchone()
+    file_info = cursor.fetchone()
 
-    if not file_data:
-        return {"message": "File not found!"}
+    if not file_info:
+        return {"message": "File not found!"}, 404
 
     cursor.execute("""
         SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
-    """, (file_data["conversation_id"], current_user_id))
+    """, (file_info["conversation_id"], current_user_id))
+
     if cursor.fetchone() is None:
-        return {"message": "You don't have access to this file!"}
+        return {"message": "You don't have access to this conversation!"}, 403
 
-    file_content = io.BytesIO(file_data["content"])
-    filename = f"{file_data['name']}.{file_data['extension']}"
+    if file_info["content"] is None:
+        return {"message": "File content is empty!"}, 404
 
-    return send_file(
-        file_content,
-        as_attachment=True,
-        download_name=filename,
-        mimetype='application/octet-stream'
-    )
+    # Lines below were written with help of AI
+    file_bytes = bytes(file_info["content"])
+    filename = f'{file_info["name"]}.{file_info["extension"]}'
+    file = io.BytesIO(file_bytes)
+
+    return send_file(file, download_name=filename)
 
 
 @conversations_blueprint.route('/files/<int:file_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "delete_file"))
 @jwt_required()
+# This function was generated using AI (Gemini)
+# Deletes an attached file. User must be the sender of the message.
 def delete_file(file_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -387,7 +340,7 @@ def delete_file(file_id):
     cursor.execute("""
         SELECT m.sender_id, m.conversation_id 
         FROM file f
-        JOIN message m ON f.message_id = m.id
+        JOIN message m ON f.id = m.file_id
         JOIN conversation c ON m.conversation_id = c.id
         WHERE f.id = %s
     """, (file_id,))

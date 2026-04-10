@@ -1,3 +1,4 @@
+from datetime import datetime
 from flasgger import swag_from
 from flask import request
 from flask_jwt_extended import create_access_token
@@ -11,6 +12,7 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 
 @authorization_blueprint.route("/register", methods=["POST"])
 @swag_from(load_yaml("documentation/authorization.yaml", "register"))
+# Registers a new user and returns JWT token. Publicly accessible.
 def register():
     try:
         firstname = request.json["firstname"]
@@ -18,11 +20,17 @@ def register():
         username = request.json["username"]
         password = request.json["password"]
         email = request.json["email"]
-        birthdate = request.json["birthdate"]
+        birthdate_str = request.json["birthdate"]
     except:
         return {
             "message": "Invalid register format!",
         }, 400
+
+    if birthdate_str:
+        birthdate = datetime.strptime(birthdate_str, '%Y-%m-%d').date()
+        today = datetime.now().date()
+        if birthdate > today:
+            return {"message": "Dátum narodenia nemôže byť v budúcnosti!"}, 400
 
     create_user_cmd = """
         INSERT INTO "user" (username, password, email)
@@ -47,7 +55,7 @@ def register():
         hashed_password = generate_password_hash(password)
         cursor.execute(create_user_cmd, (username, hashed_password, email))
         user_id = cursor.fetchone()["id_registration"]
-        cursor.execute(create_user_settings_cmd, (user_id, firstname, surname, birthdate))
+        cursor.execute(create_user_settings_cmd, (user_id, firstname, surname, birthdate_str))
         db.commit()
     except:
         db.rollback()
@@ -59,6 +67,7 @@ def register():
 
 @authorization_blueprint.route("/login", methods=["POST"])
 @swag_from(load_yaml("documentation/authorization.yaml", "login"))
+# Verifies credentials and returns JWT token. Publicly accessible.
 def login():
     try:
         username = request.json["username"]
