@@ -8,20 +8,6 @@ from helper_func import get_current_user_id, db, load_yaml
 users_blueprint = Blueprint('users', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
 
-@users_blueprint.route('/', methods=["GET"])
-@swag_from(load_yaml("documentation/users.yaml", "get_users"))
-@jwt_required()
-def get_users():
-    cursor.execute("""
-        SELECT u.id_registration, u.username, u.email, u.registration_date,
-               us.name, us.surname, us.birthdate, us.profile_picture
-        FROM "user" u
-        JOIN user_setting us ON u.id_registration = us.id_user
-    """)
-    users = cursor.fetchall()
-    return {"message": "Success", "users": users}
-
-
 @users_blueprint.route('/<int:user_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/users.yaml", "get_user_by_id"))
 @jwt_required()

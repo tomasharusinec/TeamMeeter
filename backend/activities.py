@@ -13,28 +13,6 @@ def get_activity_info(activity_id):
     cursor.execute("SELECT group_id, creator_id FROM activity WHERE id_activity = %s", (activity_id,))
     return cursor.fetchone()
 
-def is_individual_activity_owner(activity_info, current_user_id):
-    return activity_info["group_id"] is None and activity_info["creator_id"] == current_user_id
-
-
-@activities_blueprint.route('/individual', methods=["GET"])
-@swag_from(load_yaml("documentation/activities.yaml", "get_individual_activities"))
-@jwt_required()
-def get_individual_activities():
-    identity = get_jwt_identity()
-    current_user_id = get_current_user_id(identity)
-
-    cursor.execute("""
-        SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.creator_id, u.username AS creator_username
-        FROM activity a
-        JOIN "user" u ON a.creator_id = u.id_registration
-        WHERE a.group_id IS NULL AND a.creator_id = %s
-        ORDER BY a.creation_date DESC
-    """, (current_user_id,))
-    activities = cursor.fetchall()
-    return {"message": "Success", "activities": activities}, 200
-
-
 @activities_blueprint.route('/individual', methods=["POST"])
 @swag_from(load_yaml("documentation/activities.yaml", "create_individual_activity"))
 @jwt_required()
@@ -401,6 +379,14 @@ def assign_activity_role(activity_id):
         role_id = request.json["role_id"]
     except:
         return {"message": "Invalid format!"}, 400
+
+    cursor.execute("""
+            SELECT 1 FROM role 
+            WHERE id_role = %s AND group_id = %s
+        """, (role_id, group_id))
+
+    if cursor.fetchone() is None:
+        return {"message": "Role does not belong to this group!"}, 400
 
     try:
         cursor.execute("""

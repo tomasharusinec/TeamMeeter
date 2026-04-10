@@ -53,7 +53,8 @@ def register():
         db.rollback()
         return {"message": "User already exists!"}, 409
 
-    return {"message": "Success"}, 201
+    access_token = create_access_token(identity=username)
+    return {"message": "Success", "token": access_token}, 200
 
 
 @authorization_blueprint.route("/login", methods=["POST"])
