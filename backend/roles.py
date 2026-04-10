@@ -11,6 +11,7 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 @roles_blueprint.route('/groups/<int:group_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/roles.yaml", "get_roles"))
 @jwt_required()
+# Lists all roles defined in a group. Requires group membership.
 def get_roles(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -28,6 +29,8 @@ def get_roles(group_id):
 @roles_blueprint.route('/groups/<int:group_id>', methods=["POST"])
 @swag_from(load_yaml("documentation/roles.yaml", "create_role"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Creates a new role with permissions in a group. Requires membership and 'create_role' permission.
 def create_role(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -73,6 +76,8 @@ def create_role(group_id):
 @roles_blueprint.route('/groups/<int:group_id>/<int:role_id>', methods=["PUT"])
 @swag_from(load_yaml("documentation/roles.yaml", "update_role"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Updates role details and its permissions. Requires membership and 'edit_role' permission.
 def update_role(group_id, role_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -119,6 +124,7 @@ def update_role(group_id, role_id):
 @roles_blueprint.route('/groups/<int:group_id>/roles/<int:role_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/roles.yaml", "delete_role"))
 @jwt_required()
+# Deletes a role from a group. Requires membership and 'delete_role' permission.
 def delete_role(group_id, role_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -144,6 +150,7 @@ def delete_role(group_id, role_id):
 @roles_blueprint.route('/groups/<int:group_id>/users/<int:user_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/roles.yaml", "get_user_roles"))
 @jwt_required()
+# Lists roles assigned to a user in a group. Requires group membership.
 def get_user_roles(group_id, user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -164,6 +171,8 @@ def get_user_roles(group_id, user_id):
 @roles_blueprint.route('/groups/<int:group_id>/assign', methods=["POST"])
 @swag_from(load_yaml("documentation/roles.yaml", "assign_user_role"))
 @jwt_required()
+# This function was edited using AI (Gemini)
+# Assigns a role to a user in a group. Requires membership and 'add_role' permission.
 def assign_user_role(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -211,6 +220,7 @@ def assign_user_role(group_id):
 @roles_blueprint.route('/groups/<int:group_id>/users/<int:user_id>/roles/<int:role_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/roles.yaml", "remove_user_role"))
 @jwt_required()
+# Removes a role from a user. Requires membership and 'manage_roles' permission.
 def remove_user_role(group_id, user_id, role_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -231,5 +241,3 @@ def remove_user_role(group_id, user_id, role_id):
         return {"message": "Failed to remove role!"}, 500
 
     return {"message": "Role removed successfully"}, 200
-
-

@@ -10,8 +10,11 @@ from conversations import conversations_blueprint
 import os
 from flask_jwt_extended import JWTManager
 from flasgger import Swagger
+from websocket_handler import sock
+from sync import sync_blueprint
 
 app = Flask(__name__)
+sock.init_app(app)
 
 template = {
     "openapi": "3.0.3",
@@ -19,6 +22,7 @@ template = {
         "title": "TeamMeeter's API",
         "version": "1.0.0",
     },
+    # JSON below was generated using AI
     "components": {
         "securitySchemes": {
             "Bearer": {
@@ -42,6 +46,8 @@ swagger = Swagger(app, template=template)
 app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY")
 jwt = JWTManager(app)
 
+# Function below was generated using AI (Gemini)
+# Automatically look up user ID during JWT verification. Internal JWT handler.
 @jwt.user_lookup_loader
 def user_lookup_callback(_jwt_header, jwt_data):
     identity = jwt_data["sub"]
@@ -54,6 +60,7 @@ app.register_blueprint(conversations_blueprint, url_prefix="/conversations")
 app.register_blueprint(activities_blueprint, url_prefix="/activities")
 app.register_blueprint(roles_blueprint, url_prefix="/roles")
 app.register_blueprint(notifications_blueprint, url_prefix="/notifications")
+app.register_blueprint(sync_blueprint, url_prefix="/sync")
 
 if __name__ == "__main__":
     sync_permissions()

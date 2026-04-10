@@ -12,6 +12,7 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 @users_blueprint.route('/<int:user_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/users.yaml", "get_user_by_id"))
 @jwt_required()
+# Gets public and profile info for a specific user. Requires valid JWT.
 def get_user(user_id):
     cursor.execute("""
         SELECT u.id_registration, u.username, u.email, u.registration_date,
@@ -28,6 +29,8 @@ def get_user(user_id):
 @users_blueprint.route('/<int:user_id>', methods=["PUT"])
 @swag_from(load_yaml("documentation/users.yaml", "update_user"))
 @jwt_required()
+# Database query was generated using AI (Gemini)
+# Updates settings and personal info for the current user. User can only update own profile.
 def update_user(user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -43,11 +46,8 @@ def update_user(user_id):
         return {"message": "Invalid format!"}
 
     if birthdate_str:
-
         birthdate = datetime.strptime(birthdate_str, '%Y-%m-%d').date()
-
         today = datetime.now().date()
-
         if birthdate > today:
             return {"message": "Invalid birthdate"}, 400
 
@@ -71,6 +71,7 @@ def update_user(user_id):
 @users_blueprint.route('/<int:user_id>', methods=["DELETE"])
 @swag_from(load_yaml("documentation/users.yaml", "delete_user"))
 @jwt_required()
+# Permanently deletes user account. User can only delete own account.
 def delete_user(user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
