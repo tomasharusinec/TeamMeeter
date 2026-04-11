@@ -22,56 +22,6 @@ get_notifications:
                     type: {type: string, example: "new_message"}
                     created_at: {type: string, format: "date-time", example: "2026-04-09T10:55:00Z"}
 
-create_notification:
-  tags:
-    - Notifications
-  summary: "Create a new notification"
-  security:
-    - Bearer: []
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          required:
-            - type
-            - user_ids
-          properties:
-            type: {type: string, example: "activity_invite"}
-            user_ids:
-              type: array
-              items: {type: integer}
-              example: [1, 2, 5]
-            message_id: {type: integer, example: 42}
-            activity_id: {type: integer, example: 7}
-  responses:
-    201:
-      description: "Notification created successfully"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Notification created successfully"}
-              notification_id: {type: integer, example: 15}
-    400:
-      description: "Bad Request - Invalid format"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Invalid format!"}
-    500:
-      description: "Database error"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Failed to create notification!"}
-
 delete_notification:
   tags:
     - Notifications

@@ -86,15 +86,15 @@ def get_conversation(conv_id):
         SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
     """, (conv_id, current_user_id))
     if cursor.fetchone() is None:
-        return {"message": "You are not a participant of this conversation!"}
+        return {"message": "You are not a participant of this conversation!"}, 403
 
     cursor.execute("""
         SELECT id, name, created_at FROM conversation WHERE id = %s
     """, (conv_id,))
     conversation = cursor.fetchone()
     if conversation is None:
-        return {"message": "Conversation not found!"}
-    return {"message": "Success", "conversation": conversation}
+        return {"message": "Conversation not found!"}, 404
+    return {"message": "Success", "conversation": conversation}, 200
 
 
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["GET"])
@@ -109,7 +109,7 @@ def get_participants(conv_id):
         SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
     """, (conv_id, current_user_id))
     if cursor.fetchone() is None:
-        return {"message": "You are not a participant of this conversation!"}
+        return {"message": "You are not a participant of this conversation!"}, 403
 
     # Query below was generated using AI (Gemini)
     cursor.execute("""
@@ -120,7 +120,7 @@ def get_participants(conv_id):
         WHERE p.conversation_id = %s
     """, (conv_id,))
     participants = cursor.fetchall()
-    return {"message": "Success", "participants": participants}
+    return {"message": "Success", "participants": participants}, 200
 
 
 @conversations_blueprint.route('/<int:conv_id>/participants', methods=["POST"])
@@ -229,7 +229,7 @@ def get_messages(conv_id):
         SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
     """, (conv_id, current_user_id))
     if cursor.fetchone() is None:
-        return {"message": "You are not a participant of this conversation!"}
+        return {"message": "You are not a participant of this conversation!"}, 403
 
     cursor.execute("""
         SELECT m.id, m.conversation_id, m.sender_id, m.text, u.username AS sender_username,
@@ -251,7 +251,7 @@ def get_messages(conv_id):
         except:
             msg["text"] = "[Decryption Error]"
 
-    return {"message": "Success", "messages": messages}
+    return {"message": "Success", "messages": messages}, 200
 
 
 @conversations_blueprint.route('/<int:conv_id>/messages/<int:message_id>', methods=["DELETE"])
@@ -271,7 +271,7 @@ def delete_message(conv_id, message_id):
     """, (message_id, conv_id))
     message = cursor.fetchone()
     if message is None:
-        return {"message": "Message not found!"}
+        return {"message": "Message not found!"}, 404
 
     can_delete = False
 
@@ -279,16 +279,16 @@ def delete_message(conv_id, message_id):
         can_delete = True
 
     if not can_delete:
-        return {"message": "You don't have permission to delete this message!"}
+        return {"message": "You don't have permission to delete this message!"}, 403
 
     try:
         cursor.execute("DELETE FROM message WHERE id = %s", (message_id,))
         db.commit()
     except:
         db.rollback()
-        return {"message": "Failed to delete message!"}
+        return {"message": "Failed to delete message!"}, 500
 
-    return {"message": "Message deleted successfully"}
+    return {"message": "Message deleted successfully"}, 200
 
 
 @conversations_blueprint.route('/files/<int:file_id>', methods=["GET"])
@@ -347,13 +347,13 @@ def delete_file(file_id):
     file_info = cursor.fetchone()
 
     if not file_info:
-        return {"message": "File not found!"}
+        return {"message": "File not found!"}, 404
 
     cursor.execute("""
         SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s
     """, (file_info["conversation_id"], current_user_id))
     if cursor.fetchone() is None:
-        return {"message": "You don't have access to this conversation!"}
+        return {"message": "You don't have access to this conversation!"}, 403
 
     can_delete = False
 
@@ -361,13 +361,13 @@ def delete_file(file_id):
         can_delete = True
 
     if not can_delete:
-        return {"message": "You don't have permission to delete this file!"}
+        return {"message": "You don't have permission to delete this file!"}, 403
 
     try:
         cursor.execute("DELETE FROM file WHERE id = %s", (file_id,))
         db.commit()
     except:
         db.rollback()
-        return {"message": "Failed to delete file!"}
+        return {"message": "Failed to delete file!"}, 500
 
-    return {"message": "File deleted successfully"}
+    return {"message": "File deleted successfully"}, 200

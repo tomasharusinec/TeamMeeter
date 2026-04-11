@@ -16,7 +16,7 @@ register:
             email: {type: string, example: "jozo1@gmail.com"}
             birthdate: {type: string, example: "1999-06-19"}
   responses:
-    201:
+    200:
       description: "User successfully registered"
       content:
         application/json:
@@ -24,14 +24,20 @@ register:
             type: object
             properties:
               "message": {type: string, example: "Success"}
+              "token": {type: string, example: "eyJhbG..."}
     400:
-      description: "Invalid request format"
+      description: "Invalid request format or data"
       content:
         application/json:
           schema:
             type: object
             properties:
-              "message": {type: string, example: "Invalid register format!"}
+              "message": {type: string}
+          examples:
+            invalid_format:
+              value: {message: "Invalid register format!"}
+            birthdate_future:
+              value: {message: "Dátum narodenia nemôže byť v budúcnosti!"}
     409:
       description: "Conflict - User, Username or Email already exists"
       content:
@@ -39,7 +45,14 @@ register:
           schema:
             type: object
             properties:
-              "message": {type: string, example: "Username already taken"}
+              "message": {type: string}
+          examples:
+            username_taken:
+              value: {message: "Username already taken"}
+            email_used:
+              value: {message: "This email was already used!"}
+            user_exists:
+              value: {message: "User already exists!"}
 
 login:
   tags:

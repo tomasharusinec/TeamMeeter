@@ -2,8 +2,9 @@ from flasgger import swag_from
 from flask import request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
-from flask import Blueprint
-from helper_func import get_current_user_id, db, is_group_member, check_permission, load_yaml
+from flask import Blueprint, send_file
+import io
+from helper_func import get_current_user_id, db, is_group_member, check_permission, load_yaml, is_valid_image
 
 groups_blueprint = Blueprint('groups', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -16,7 +17,6 @@ def create_group():
     identity = get_jwt_identity()
     user_id = get_current_user_id(identity)
     name = request.json.get("name")
-    icon = request.json.get("icon", "default_icon.png")
 
     if not name:
         return {
@@ -37,8 +37,8 @@ def create_group():
                            VALUES (%s, %s)
                            """, (conv_id, user_id))
 
-            cursor.execute("""INSERT INTO "group" (name, icon, conversation_id)
-                              VALUES (%s, %s, %s) RETURNING id_group""", (name, icon, conv_id))
+            cursor.execute("""INSERT INTO "group" (name, conversation_id)
+                              VALUES (%s, %s) RETURNING id_group""", (name, conv_id))
             new_group_id = cursor.fetchone()["id_group"]
 
             cursor.execute("""INSERT INTO role (group_id, name, color)
@@ -77,7 +77,7 @@ def get_groups():
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-                   SELECT g.name, g.icon
+                   SELECT g.id_group, g.name, g.create_date, (g.icon IS NOT NULL) as has_icon
                    FROM "group" g
                    JOIN group_member gm ON g.id_group = gm.group_id
                    WHERE gm.user_id = %s
@@ -103,7 +103,7 @@ def get_group(group_id):
         }, 403
 
     cursor.execute("""
-                   SELECT id_group, name, create_date, icon, conversation_id
+                   SELECT id_group, name, create_date, (icon IS NOT NULL) as has_icon, conversation_id
                    FROM "group"
                    WHERE id_group = %s
                    """, (group_id,))
@@ -139,7 +139,6 @@ def update_group(group_id):
 
     try:
         name = request.json.get("name")
-        icon = request.json.get("icon")
     except:
         return {
             "message": "Invalid format!"
@@ -148,10 +147,9 @@ def update_group(group_id):
     try:
         cursor.execute("""
                        UPDATE "group"
-                       SET name = COALESCE(%s, name),
-                           icon = COALESCE(%s, icon)
+                       SET name = COALESCE(%s, name)
                        WHERE id_group = %s RETURNING conversation_id
-                       """, (name, icon, group_id))
+                       """, (name, group_id))
 
         updated_group = cursor.fetchone()
 
@@ -236,7 +234,7 @@ def get_group_members(group_id):
                           u.email,
                           us.name,
                           us.surname,
-                          us.profile_picture
+                          (us.profile_picture IS NOT NULL) as has_profile_picture
                    FROM group_member gm
                             JOIN "user" u ON gm.user_id = u.id_registration
                             JOIN user_setting us ON u.id_registration = us.id_user
@@ -389,3 +387,80 @@ def remove_group_member(group_id, user_id):
     return {
         "message": "Member removed successfully"
     }, 200
+
+
+@groups_blueprint.route('/<int:group_id>/icon', methods=["GET"])
+@swag_from(load_yaml("documentation/groups.yaml", "get_group_icon"))
+@jwt_required()
+# Downloads group icon as binary stream. Requires group membership.
+def get_group_icon(group_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    cursor.execute('SELECT icon FROM "group" WHERE id_group = %s', (group_id,))
+    result = cursor.fetchone()
+    if not result or not result["icon"]:
+        return {"message": "No icon found for this group"}, 404
+
+    return send_file(
+        io.BytesIO(result["icon"]),
+        mimetype='image/png'
+    )
+
+@groups_blueprint.route('/<int:group_id>/icon', methods=["DELETE"])
+@swag_from(load_yaml("documentation/groups.yaml", "delete_group_icon"))
+@jwt_required()
+# Removes group icon. Requires 'manage_group' permission.
+def delete_group_icon(group_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    if not check_permission(current_user_id, group_id, "manage_group"):
+        return {"message": "You don't have permission to manage this group!"}, 403
+
+    try:
+        cursor.execute('UPDATE "group" SET icon = NULL WHERE id_group = %s', (group_id,))
+        db.commit()
+        return {"message": "Group icon removed successfully"}
+    except:
+        db.rollback()
+        return {"message": "Failed to remove group icon!"}, 500
+
+
+@groups_blueprint.route('/<int:group_id>/icon', methods=["PUT"])
+@swag_from(load_yaml("documentation/groups.yaml", "update_group_icon"))
+@jwt_required()
+# Function below was created with help of AI.
+# Uploads group icon as multipart/form-data. Requires 'manage_group' permission. Only JPEG/PNG allowed.
+def upload_group_icon(group_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    if not check_permission(current_user_id, group_id, "manage_group"):
+        return {"message": "You don't have permission to manage this group!"}, 403
+
+    file = request.files.get('image')
+    if not file:
+        return {"message": "No image file provided!"}, 400
+
+    data = file.read()
+    if not is_valid_image(data):
+        return {"message": "Invalid format! Only JPEG and PNG are supported."}, 400
+
+    try:
+        cursor.execute('UPDATE "group" SET icon = %s WHERE id_group = %s', (data, group_id))
+        db.commit()
+    except:
+        db.rollback()
+        return {"message": "Failed to upload group icon!"}, 500
+
+    return {"message": "Group icon uploaded successfully"}

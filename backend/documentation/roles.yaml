@@ -308,7 +308,12 @@ assign_user_role:
           schema:
             type: object
             properties:
-              message: {type: string, example: "User not found or is not a member of this group!"}
+              message: {type: string}
+          examples:
+            user_not_found:
+              value: {message: "User not found or is not a member of this group!"}
+            role_not_found:
+              value: {message: "Role not found in this group!"}
     500:
       description: "Database error"
       content:
@@ -316,7 +321,9 @@ assign_user_role:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Failed to assign role!"}
+              message: {type: string}
+          example:
+            message: "Failed to assign role!"
 
 remove_user_role:
   tags:

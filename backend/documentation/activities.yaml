@@ -28,13 +28,20 @@ create_individual_activity:
               message: {type: string, example: "Activity created successfully"}
               activity_id: {type: integer, example: 1}
     400:
-      description: "Invalid format"
+      description: "Invalid format or date"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Invalid format!"}
+              message: {type: string}
+          examples:
+            invalid_format:
+              value: {message: "Invalid format!"}
+            invalid_date:
+              value: {message: "This date is invalid!"}
+            invalid_date_format:
+              value: {message: "Invalid date format!"}
     500:
       description: "Database error"
       content:
@@ -42,7 +49,9 @@ create_individual_activity:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Failed to create activity!"}
+              message: {type: string}
+          example:
+            message: "Failed to create activity!"
 
 get_activities:
   tags:
@@ -84,7 +93,12 @@ get_activities:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You are not a member of this group!"}
+              message: {type: string}
+          examples:
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to view activities!"}
 
 create_activity:
   tags:
@@ -121,13 +135,20 @@ create_activity:
               message: {type: string, example: "Activity created successfully"}
               activity_id: {type: integer, example: 1}
     400:
-      description: "Invalid format"
+      description: "Invalid format or date"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Invalid format!"}
+              message: {type: string}
+          examples:
+            invalid_format:
+              value: {message: "Invalid format!"}
+            invalid_date:
+              value: {message: "This date is invalid!"}
+            invalid_date_format:
+              value: {message: "Invalid date format!"}
     403:
       description: "Not a member or no permission"
       content:
@@ -135,7 +156,12 @@ create_activity:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have permission to create activities!"}
+              message: {type: string}
+          examples:
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to create activities!"}
     500:
       description: "Database error"
       content:
@@ -143,7 +169,9 @@ create_activity:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Failed to create activity!"}
+              message: {type: string}
+          example:
+            message: "Failed to create activity!"
 
 get_activity:
   tags:
@@ -179,13 +207,20 @@ get_activity:
                   group_id: {type: integer, example: 1, nullable: true}
                   creator_username: {type: string, example: "jozkoplet"}
     403:
-      description: "No access (not a group member, no permission, or not the owner of individual activity)"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have access to this activity!"}
+              message: {type: string}
+          examples:
+            not_owner:
+              value: {message: "You don't have access to this activity!"}
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to view activities!"}
     404:
       description: "Activity not found"
       content:
@@ -228,21 +263,35 @@ update_activity:
             properties:
               message: {type: string, example: "Activity updated successfully"}
     400:
-      description: "Invalid format"
+      description: "Invalid format or date"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Invalid format!"}
+              message: {type: string}
+          examples:
+            invalid_format:
+              value: {message: "Invalid format!"}
+            invalid_date:
+              value: {message: "This date is invalid!"}
+            invalid_date_format:
+              value: {message: "Invalid date format!"}
     403:
-      description: "No access (not a group member, no permission, or not the owner of individual activity)"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have access to this activity!"}
+              message: {type: string}
+          examples:
+            not_owner:
+              value: {message: "You don't have access to this activity!"}
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to edit this activity!"}
     404:
       description: "Activity not found"
       content:
@@ -250,7 +299,9 @@ update_activity:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Activity not found!"}
+              message: {type: string}
+          example:
+            message: "Activity not found!"
     500:
       description: "Database error"
       content:
@@ -258,7 +309,9 @@ update_activity:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Failed to update activity!"}
+              message: {type: string}
+          example:
+            message: "Failed to update activity!"
 
 delete_activity:
   tags:
@@ -283,13 +336,20 @@ delete_activity:
             properties:
               message: {type: string, example: "Activity deleted successfully"}
     403:
-      description: "No access (not a group member, no permission, or not the owner of individual activity)"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have access to this activity!"}
+              message: {type: string}
+          examples:
+            not_owner:
+              value: {message: "You don't have access to this activity!"}
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to delete this activity!"}
     404:
       description: "Activity not found"
       content:
@@ -297,7 +357,9 @@ delete_activity:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Activity not found!"}
+              message: {type: string}
+          example:
+            message: "Activity not found!"
     500:
       description: "Database error"
       content:
@@ -305,7 +367,9 @@ delete_activity:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Failed to delete activity!"}
+              message: {type: string}
+          example:
+            message: "Failed to delete activity!"
 
 get_activity_users:
   tags:
@@ -339,13 +403,18 @@ get_activity_users:
                     name: {type: string, example: "Jozef"}
                     surname: {type: string, example: "Novy"}
     403:
-      description: "No access (not a group member or not the owner of individual activity)"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have access to this activity!"}
+              message: {type: string}
+          examples:
+            not_owner:
+              value: {message: "You don't have access to this activity!"}
+            not_member:
+              value: {message: "You are not a member of this group!"}
     404:
       description: "Activity not found"
       content:
@@ -396,13 +465,20 @@ assign_activity_user:
             properties:
               message: {type: string, example: "Invalid format!"}
     403:
-      description: "No access (not a group member, no permission, or not the owner of individual activity)"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have access to this activity!"}
+              message: {type: string}
+          examples:
+            not_owner:
+              value: {message: "You don't have access to this activity!"}
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to assign users to activities!"}
     404:
       description: "Activity not found"
       content:
@@ -448,13 +524,20 @@ remove_activity_user:
             properties:
               message: {type: string, example: "User removed from activity successfully"}
     403:
-      description: "No access (not a group member, no permission, or not the owner of individual activity)"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have access to this activity!"}
+              message: {type: string}
+          examples:
+            not_owner:
+              value: {message: "You don't have access to this activity!"}
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to remove users from activities!"}
     404:
       description: "Activity not found"
       content:
@@ -503,13 +586,18 @@ get_activity_roles:
                     name: {type: string, example: "Frontend Developer"}
                     color: {type: string, example: "#FF5733"}
     403:
-      description: "No access (not a group member or not the owner of individual activity)"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have access to this activity!"}
+              message: {type: string}
+          examples:
+            not_owner:
+              value: {message: "You don't have access to this activity!"}
+            not_member:
+              value: {message: "You are not a member of this group!"}
     404:
       description: "Activity not found"
       content:
@@ -550,23 +638,37 @@ assign_activity_role:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Role assigned to activity successfully"}
+              message: {type: string}
+          example:
+            message: "Role assigned to activity successfully"
     400:
-      description: "Invalid format or individual activity"
+      description: "Invalid format or restricted action"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Cannot assign roles to individual activities!"}
+              message: {type: string}
+          examples:
+            individual_activity:
+              value: {message: "Cannot assign roles to individual activities!"}
+            role_not_in_group:
+              value: {message: "Role does not belong to this group!"}
+            invalid_format:
+              value: {message: "Invalid format!"}
     403:
-      description: "Not a member or no permission"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have permission to assign roles to activities!"}
+              message: {type: string}
+          examples:
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to assign roles to activities!"}
     404:
       description: "Activity not found"
       content:
@@ -620,13 +722,18 @@ remove_activity_role:
             properties:
               message: {type: string, example: "Cannot remove roles from individual activities!"}
     403:
-      description: "Not a member or no permission"
+      description: "No access"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You don't have permission to remove roles from activities!"}
+              message: {type: string}
+          examples:
+            not_member:
+              value: {message: "You are not a member of this group!"}
+            no_permission:
+              value: {message: "You don't have permission to remove roles from activities!"}
     404:
       description: "Activity not found"
       content:

@@ -18,8 +18,29 @@ get_user_by_id:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Success"}
-              "user": {type: object, properties: { id_registration: {type: integer}, username: {type: string} }}
+              message: {type: string}
+              user:
+                type: object
+                properties:
+                  id_registration: {type: integer}
+                  username: {type: string}
+                  email: {type: string}
+                  registration_date: {type: string}
+                  name: {type: string}
+                  surname: {type: string}
+                  birthdate: {type: string}
+                  has_profile_picture: {type: boolean}
+          example:
+            message: "Success"
+            user:
+              id_registration: 123
+              username: "jozkoplet"
+              email: "jozo@example.com"
+              registration_date: "2023-10-27T10:00:00"
+              name: "Jozef"
+              surname: "Novy"
+              birthdate: "1995-12-01"
+              has_profile_picture: true
     404:
       description: "User not found"
       content:
@@ -27,20 +48,66 @@ get_user_by_id:
           schema:
             type: object
             properties:
-              message: {type: string, example: "User not found!"}
+              message: {type: string}
+          example:
+            message: "User not found!"
 
-update_user:
+get_my_profile:
   tags:
     - Users
-  summary: "Update user profile"
+  summary: "Get current user profile"
+  description: "Retrieves the full profile details for the authenticated user."
   security:
     - Bearer: []
-  parameters:
-    - in: path
-      name: user_id
-      required: true
-      schema:
-        type: integer
+  responses:
+    200:
+      description: "Profile found"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string}
+              user:
+                type: object
+                properties:
+                  id_registration: {type: integer}
+                  username: {type: string}
+                  email: {type: string}
+                  registration_date: {type: string}
+                  name: {type: string}
+                  surname: {type: string}
+                  birthdate: {type: string}
+                  has_profile_picture: {type: boolean}
+          example:
+            message: "Success"
+            user:
+              id_registration: 123
+              username: "jozkoplet"
+              email: "jozo@example.com"
+              registration_date: "2023-10-27T10:00:00"
+              name: "Jozef"
+              surname: "Novy"
+              birthdate: "1995-12-01"
+              has_profile_picture: true
+    401:
+      description: "Unauthorized"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              msg: {type: string}
+          example:
+            msg: "Missing Authorization Header"
+
+update_my_profile:
+  tags:
+    - Users
+  summary: "Update current user profile"
+  description: "Updates the profile settings for the authenticated user (derived from JWT). Supports updating email, name, surname, and birthdate."
+  security:
+    - Bearer: []
   requestBody:
     required: true
     content:
@@ -51,7 +118,7 @@ update_user:
             name: {type: string, example: "Jozef"}
             surname: {type: string, example: "Vymeneny"}
             birthdate: {type: string, example: "1999-06-19"}
-            profile_picture: {type: string, example: "nova_fotka.jpg"}
+            email: {type: string, example: "jozo_vymeneny@gmail.com"}
   responses:
     200:
       description: "Update successful"
@@ -60,23 +127,44 @@ update_user:
           schema:
             type: object
             properties:
-              message: {type: string, example: "User updated successfully"}
-    403:
-      description: "Forbidden - trying to update another user"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "You can only update your own profile!"}
+              message: {type: string}
+          example:
+            message: "User updated successfully"
     400:
-      description: "Invalid format"
+      description: "Invalid format or birthdate"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Invalid format!"}
+              message: {type: string}
+          examples:
+            invalid_format:
+              value: {message: "Invalid format!"}
+            invalid_birthdate:
+              value: {message: "Invalid birthdate"}
+            invalid_birthdate_format:
+              value: {message: "Invalid birthdate format. Use YYYY-MM-DD."}
+    401:
+      description: "Unauthorized"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              msg: {type: string}
+          example:
+            msg: "Missing Authorization Header"
+    409:
+      description: "Conflict - Email already taken"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string}
+          example:
+            message: "Email is already taken!"
     500:
       description: "Database error"
       content:
@@ -84,12 +172,52 @@ update_user:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Failed to update user!"}
+              message: {type: string}
+          example:
+            message: "Failed to update user!"
 
-delete_user:
+delete_my_profile:
   tags:
     - Users
-  summary: "Delete user account"
+  summary: "Delete current user account"
+  description: "Permanently deletes the account of the authenticated user."
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "User deleted"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "User deleted successfully"}
+    401:
+      description: "Unauthorized"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              msg: {type: string}
+          example:
+            msg: "Missing Authorization Header"
+    500:
+      description: "Database error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string}
+          example:
+            message: "Failed to delete user!"
+
+get_profile_picture:
+  tags:
+    - Users
+  summary: "Retrieve user profile picture"
+  description: "Retrieves the profile picture as a binary stream. The response is a raw byte stream."
   security:
     - Bearer: []
   parameters:
@@ -100,21 +228,98 @@ delete_user:
         type: integer
   responses:
     200:
-      description: "User deleted"
+      description: "Profile picture streamed successfully"
+      content:
+        application/octet-stream:
+          schema:
+            format: binary
+    404:
+      description: "User or Profile picture not found"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "User deleted successfully"}
-    403:
-      description: "Forbidden - trying to delete another user"
+              message: {type: string}
+          example:
+            message: "No profile picture found"
+
+get_my_profile_picture:
+  tags:
+    - Users
+  summary: "Retrieve current user profile picture"
+  description: "Retrieves the authenticated user's profile picture as a binary stream."
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Profile picture streamed successfully"
+      content:
+        application/octet-stream:
+          schema:
+            format: binary
+    401:
+      description: "Unauthorized"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You can only delete your own account!"}
+              msg: {type: string}
+          example:
+            msg: "Missing Authorization Header"
+    404:
+      description: "Profile picture not found"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string}
+          example:
+            message: "No profile picture found"
+
+update_my_profile_picture:
+  tags:
+    - Users
+  summary: "Update current user profile picture"
+  description: "Uploads a new profile picture. Supports ONLY JPEG and PNG formats."
+  security:
+    - Bearer: []
+  requestBody:
+    required: true
+    content:
+      multipart/form-data:
+        schema:
+          type: object
+          required:
+            - image
+          properties:
+            image:
+              format: binary
+              description: "Picture (JPEG or PNG)"
+  responses:
+    200:
+      description: "Profile picture updated"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Profile picture uploaded successfully"}
+    400:
+      description: "Image file missing or invalid format"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string}
+          examples:
+            no_file:
+              value: {message: "No image file provided!"}
+            invalid_format:
+              value: {message: "Invalid format! Only JPEG and PNG are supported."}
     500:
       description: "Database error"
       content:
@@ -122,4 +327,43 @@ delete_user:
           schema:
             type: object
             properties:
-              message: {type: string, example: "Failed to delete user!"}
+              message: {type: string}
+          example:
+            message: "Failed to upload profile picture!"
+
+delete_my_profile_picture:
+  tags:
+    - Users
+  summary: "Remove current user profile picture"
+  description: "Deletes the current user's profile picture. This is the preferred way to reset the icon."
+  security:
+    - Bearer: []
+  responses:
+    200:
+      description: "Profile picture removed"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Profile picture removed successfully"}
+    401:
+      description: "Unauthorized"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              msg: {type: string}
+          example:
+            msg: "Missing Authorization Header"
+    500:
+      description: "Database error"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string}
+          example:
+            message: "Failed to remove profile picture!"

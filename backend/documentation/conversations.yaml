@@ -236,13 +236,18 @@ add_participant:
             properties:
               message: {type: string, example: "Invalid format!"}
     403:
-      description: "Not a participant"
+      description: "Forbidden"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You are not a participant of this conversation!"}
+              message: {type: string}
+          examples:
+            not_participant:
+              value: {message: "You are not a participant of this conversation!"}
+            is_group:
+              value: {message: "This is a group conversation. Please use the group endpoints to add members!"}
     500:
       description: "Database error"
       content:
@@ -279,13 +284,18 @@ remove_participant:
             properties:
               message: {type: string, example: "Participant removed successfully"}
     403:
-      description: "Not a participant"
+      description: "Forbidden"
       content:
         application/json:
           schema:
             type: object
             properties:
-              message: {type: string, example: "You are not a participant of this conversation!"}
+              message: {type: string}
+          examples:
+            not_participant:
+              value: {message: "You are not a participant of this conversation!"}
+            is_group:
+              value: {message: "This is a group conversation. Please use the group endpoints to remove members!"}
     500:
       description: "Database error"
       content:
@@ -326,6 +336,13 @@ get_messages:
                     sender_id: {type: integer, example: 1}
                     text: {type: string, example: "Ahoj"}
                     sender_username: {type: string, example: "jozkoplet"}
+                    file:
+                      type: object
+                      nullable: true
+                      properties:
+                        id: {type: integer, example: 5}
+                        name: {type: string, example: "dokument"}
+                        extension: {type: string, example: "pdf"}
     403:
       description: "Not a participant"
       content:
@@ -335,62 +352,7 @@ get_messages:
             properties:
               message: {type: string, example: "You are not a participant of this conversation!"}
 
-send_message:
-  tags:
-    - Conversations
-  summary: "Send a message in a conversation"
-  security:
-    - Bearer: []
-  parameters:
-    - in: path
-      name: conv_id
-      required: true
-      schema:
-        type: integer
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          required:
-            - text
-          properties:
-            text: {type: string, example: "Ahoj"}
-  responses:
-    200:
-      description: "Message sent successfully"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Message sent successfully"}
-              message_id: {type: integer, example: 1}
-    400:
-      description: "Invalid format"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Invalid format!"}
-    403:
-      description: "Not a participant"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "You are not a participant of this conversation!"}
-    500:
-      description: "Database error"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Failed to send message!"}
+
 
 delete_message:
   tags:
@@ -443,150 +405,6 @@ delete_message:
             properties:
               message: {type: string, example: "Failed to delete message!"}
 
-get_files:
-  tags:
-    - Conversations
-  summary: "Retrieve all files for a specific message"
-  security:
-    - Bearer: []
-  parameters:
-    - in: path
-      name: message_id
-      required: true
-      schema:
-        type: integer
-  responses:
-    200:
-      description: "List of files retrieved successfully"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Success"}
-              files:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id: {type: integer, example: 1}
-                    message_id: {type: integer, example: 1}
-                    name: {type: string, example: "document"}
-                    extension: {type: string, example: "pdf"}
-    403:
-      description: "No access to message"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "You don't have access to this message!"}
-
-upload_file:
-  tags:
-    - Conversations
-  summary: "Upload a file for a specific message"
-  security:
-    - Bearer: []
-  parameters:
-    - in: path
-      name: message_id
-      required: true
-      schema:
-        type: integer
-  requestBody:
-    required: true
-    content:
-      multipart/form-data:
-        schema:
-          type: object
-          properties:
-            content:
-              type: string
-              format: binary
-              description: "The file to upload"
-  responses:
-    200:
-      description: "File uploaded successfully"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "File uploaded successfully"}
-              file_id: {type: integer, example: 1}
-              name: {type: string, example: "document"}
-              extension: {type: string, example: "pdf"}
-    400:
-      description: "Invalid format or empty file"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "File is empty!"}
-    403:
-      description: "Not your message"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "You can only attach files to your own messages!"}
-    404:
-      description: "Message not found"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Message not found!"}
-    500:
-      description: "Database error"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "Failed to upload file!"}
-
-download_file:
-  tags:
-    - Conversations
-  summary: "Download a specific file"
-  security:
-    - Bearer: []
-  parameters:
-    - in: path
-      name: file_id
-      required: true
-      schema:
-        type: integer
-  responses:
-    200:
-      description: "File downloaded successfully"
-      content:
-        application/octet-stream:
-          schema:
-            type: string
-            format: binary
-    403:
-      description: "No access"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "You don't have access to this file!"}
-    404:
-      description: "File not found"
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              message: {type: string, example: "File not found!"}
-
 delete_file:
   tags:
     - Conversations
@@ -632,3 +450,40 @@ delete_file:
             type: object
             properties:
               message: {type: string, example: "Failed to delete file!"}
+
+get_file:
+  tags:
+    - Conversations
+  summary: "Get conversation file"
+  security:
+    - Bearer: []
+  parameters:
+    - in: path
+      name: file_id
+      required: true
+      schema:
+        type: integer
+  responses:
+    200:
+      description: "File streamed successfully"
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    403:
+      description: "No access"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "You don't have access to this conversation!"}
+    404:
+      description: "File not found"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "File not found!"}
