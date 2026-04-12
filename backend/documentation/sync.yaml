@@ -44,3 +44,45 @@ sync_push:
                     client_id: {type: string, example: "temp-123"}
     401:
       description: "Unauthorized"
+sync_pull:
+  tags:
+    - Sync
+  summary: "Pull changes from the server"
+  description: "Retrieves new messages or activities since the last synchronized IDs."
+  security:
+    - Bearer: []
+  parameters:
+    - in: query
+      name: last_message_id
+      schema: {type: integer, default: 0}
+    - in: query
+      name: last_activity_id
+      schema: {type: integer, default: 0}
+    - in: query
+      name: conversation_id
+      schema: {type: integer}
+      description: "Optional filter for a specific conversation"
+  responses:
+    200:
+      description: "Success"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Success"}
+              messages:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: {type: integer}
+                    text: {type: string}
+                    sender_username: {type: string}
+              activities:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id_activity: {type: integer}
+                    name: {type: string}

@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import psycopg2
+import jwt
 from psycopg2.extras import RealDictCursor
 from flask_sock import Sock
 from cryptography.fernet import Fernet
@@ -241,6 +242,94 @@ def handle_send_message(ws, conn, user_id, username, data):
         json_payload = json.dumps(error_payload)
         ws.send(json_payload)
 
+# Function below was polished with AI (Gemini)
+# Handles message with file attachment via websocket. Requires group membership.
+def handle_send_message_with_file(ws, conn, user_id, username, data):
+    conv_id = data.get("conversation_id")
+    text = data.get("text", "")
+    file_name = data.get("file_name")
+    file_extension = data.get("file_extension")
+
+    if conv_id is None or not file_name or not file_extension:
+        error_payload = {
+            "type": "error",
+            "message": "conversation_id, file_name, and file_extension are required"
+        }
+        json_string = json.dumps(error_payload)
+        ws.send(json_string)
+        return
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s",
+                (conv_id, user_id),
+            )
+            if cur.fetchone() is None:
+                access_denied_payload = {
+                    "type": "error",
+                    "message": "You are not a participant of this conversation"
+                }
+                json_payload = json.dumps(access_denied_payload)
+                ws.send(json_payload)
+                return
+
+        ws.send(json.dumps({"type": "awaiting_file"}))
+        file_content = ws.receive(timeout=30)
+        if file_content is None:
+            no_data_payload = {
+                "type": "error",
+                "message": "No file data received"
+            }
+            json_output = json.dumps(no_data_payload)
+            ws.send(json_output)
+            return
+
+        if isinstance(file_content, str):
+            file_content = file_content.encode()
+
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """INSERT INTO file (name, extension, content)
+                   VALUES (%s, %s, %s) RETURNING id""",
+                (file_name, file_extension, file_content),
+            )
+            file_id = cur.fetchone()["id"]
+
+            encrypted = cipher_suite.encrypt(text.encode()) if text else cipher_suite.encrypt(b"")
+            cur.execute(
+                """INSERT INTO message (conversation_id, sender_id, file_id, text)
+                   VALUES (%s, %s, %s, %s) RETURNING id""",
+                (conv_id, user_id, file_id, encrypted),
+            )
+            message_id = cur.fetchone()["id"]
+            conn.commit()
+
+        broadcast_payload = {
+            "type": "new_message",
+            "id": message_id,
+            "conversation_id": conv_id,
+            "sender_id": user_id,
+            "sender_username": username,
+            "text": text,
+            "file": {
+                "id": file_id,
+                "name": file_name,
+                "extension": file_extension,
+            },
+        }
+        broadcast_to_conversation(conv_id, broadcast_payload, db_conn=conn)
+        create_message_notification(conn, message_id, conv_id, user_id)
+
+    except Exception as e:
+        conn.rollback()
+        error_details = {
+            "type": "error",
+            "message": f"Failed to send message with file: {str(e)}"
+        }
+        json_payload = json.dumps(error_details)
+        ws.send(json_payload)
+
 # Function below was generated using AI (Gemini)
 # Sends payload to all active websocket connections of specified users
 def broadcast_to_users(user_ids: list[int], payload: dict):
@@ -255,3 +344,122 @@ def broadcast_to_users(user_ids: list[int], payload: dict):
                 except:
                     dead.add(ws)
             sockets -= dead
+
+# Function below was generated using AI (Gemini)
+# Sends payload to all online participants of a conversation
+def broadcast_to_conversation(conversation_id: int, payload: dict, db_conn=None):
+    if db_conn is None:
+        own_conn = True
+    else:
+        own_conn = False
+
+    if own_conn:
+        db_conn = get_db_connection()
+
+    try:
+        participant_ids = get_participants(db_conn, conversation_id)
+        message_text = json.dumps(payload, default=str)
+
+        with clients_lock:
+            for uid in participant_ids:
+                sockets = connected_clients.get(uid, set())
+                dead = set()
+                for ws in sockets:
+                    try:
+                        ws.send(message_text)
+                    except:
+                        dead.add(ws)
+                sockets -= dead
+    finally:
+        if own_conn:
+            db_conn.close()
+
+# Function below was generated using AI with manual refinements
+# Main websocket endpoint handling auth and message routing. Requires JWT auth message.
+@sock.route("/websocket")
+def websocket_endpoint(ws):
+    user_id = None
+    username = None
+    conn = get_db_connection()
+
+    try:
+        raw = ws.receive(timeout=30)
+        if raw is None:
+            return
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            ws.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
+            return
+
+        if data.get("type") != "auth" or "token" not in data:
+            auth_error = {
+                "type": "error",
+                "message": "First message must be auth with token"
+            }
+            json_response = json.dumps(auth_error)
+            ws.send(json_response)
+            return
+
+        try:
+            decoded = jwt.decode(
+                data["token"],
+                JWT_SECRET,
+                algorithms=["HS256"],
+            )
+            username = decoded.get("sub")
+        except jwt.ExpiredSignatureError:
+            ws.send(json.dumps({"type": "error", "message": "Token expired"}))
+            return
+        except jwt.InvalidTokenError:
+            ws.send(json.dumps({"type": "error", "message": "Invalid token"}))
+            return
+
+        user_id = get_user_id(conn, username)
+        if user_id is None:
+            ws.send(json.dumps({"type": "error", "message": "User not found"}))
+            return
+
+        register(user_id, ws)
+        auth_payload = {
+            "type": "auth_success",
+            "user_id": user_id,
+            "username": username,
+        }
+        json_response = json.dumps(auth_payload)
+        ws.send(json_response)
+
+        while True:
+            raw = ws.receive()
+            if raw is None:
+                break
+
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                ws.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
+                continue
+
+            msg_type = data.get("type")
+            if msg_type == "send_message":
+                handle_send_message(ws, conn, user_id, username, data)
+            elif msg_type == "send_message_with_file":
+                handle_send_message_with_file(ws, conn, user_id, username, data)
+            else:
+                unknown_type_payload = {
+                    "type": "error",
+                    "message": f"Unknown message type: {msg_type}"
+                }
+                json_response = json.dumps(unknown_type_payload)
+                ws.send(json_response)
+    except:
+        pass
+
+    finally:
+        if user_id is not None:
+            unregister(user_id, ws)
+        try:
+            conn.close()
+        except:
+            pass

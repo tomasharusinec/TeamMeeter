@@ -125,6 +125,10 @@ def sync_push():
                 result = sync_delete_message(current_user_id, operation)
             elif operation_type == "create_activity":
                 result = sync_create_activity(current_user_id, operation)
+            elif operation_type == "update_activity":
+                result = sync_update_activity(current_user_id, operation)
+            elif operation_type == "delete_activity":
+                result = sync_delete_activity(current_user_id, operation)
             else:
                 result = {"status": "error", "reason": f"unknown operation: {operation_type}"}
         except Exception as e:
@@ -269,3 +273,91 @@ def sync_create_activity(user_id, data):
             pass
 
     return {"message": f"Successfully created activity with id {activity_id}!"}
+
+# Function below was generated using AI (Gemini) with manual refinements
+# Updates an existing activity. Requires being creator or having 'edit_activity' permission.
+def sync_update_activity(user_id, data):
+    activity_id = data.get("activity_id")
+    name = data.get("name")
+    description = data.get("description")
+    deadline = data.get("deadline")
+
+    if not activity_id:
+        return {"status": "error", "reason": "activity_id is required"}
+
+    cursor.execute(
+        "SELECT group_id, creator_id FROM activity WHERE id_activity = %s",
+        (activity_id,),
+    )
+    activity = cursor.fetchone()
+    if activity is None:
+        return {"message": "activity_not_found"}
+
+    group_id = activity["group_id"]
+    creator_id = activity["creator_id"]
+
+    if not is_group_member(user_id, group_id):
+        return {"message": "User is not a group member!"}
+
+    if user_id == creator_id:
+        is_creator = True
+    else:
+        is_creator = False
+    if not is_creator and not check_permission(user_id, group_id, "edit_activity"):
+        return {"message": "You dont have permissions to edit activity!"}
+
+    client_ts = data.get("client_timestamp")
+    if client_ts:
+        cursor.execute(
+            "SELECT creation_date FROM activity WHERE id_activity = %s",
+            (activity_id,),
+        )
+        current = cursor.fetchone()
+        if current is None:
+            return {"message": "Activity was already deleted by another user!"}
+
+    cursor.execute("""
+        UPDATE activity SET
+            name = COALESCE(%s, name),
+            description = COALESCE(%s, description),
+            deadline = COALESCE(%s, deadline)
+        WHERE id_activity = %s
+    """, (name, description, deadline, activity_id))
+    db.commit()
+
+    return {"message": f"Successfully created activity with id {activity_id}!"}
+
+# Function below was generated using AI (Gemini) with manual refinements
+# Deletes an activity. Requires being creator or having 'delete_activity' permission.
+def sync_delete_activity(user_id, data):
+    activity_id = data.get("activity_id")
+
+    if not activity_id:
+        return {"message": "Activity_id is required!"}
+
+    cursor.execute(
+        "SELECT group_id, creator_id FROM activity WHERE id_activity = %s",
+        (activity_id,),
+    )
+    activity = cursor.fetchone()
+
+    if activity is None:
+        return {"message": "Activity was not found!"}
+
+    group_id = activity["group_id"]
+    creator_id = activity["creator_id"]
+
+    if not is_group_member(user_id, group_id):
+        return {"message": "User is not a group member!"}
+
+    if user_id == creator_id:
+        is_creator = True
+    else:
+        is_creator = False
+    if not is_creator and not check_permission(user_id, group_id, "delete_activity"):
+        return {"status": "conflict", "reason": "no_permission"}
+
+    cursor.execute("DELETE FROM activity WHERE id_activity = %s", (activity_id,))
+    db.commit()
+
+    return {"status": "deleted", "server_id": activity_id}
