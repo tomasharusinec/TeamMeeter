@@ -1,0 +1,46 @@
+sync_push:
+  tags:
+    - Sync
+  summary: "Push multiple operations to the server"
+  description: "Synchronizes client-side changes with the server. Supports creating/deleting messages and activities."
+  security:
+    - Bearer: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            operations:
+              type: array
+              items:
+                type: object
+                properties:
+                  op: {type: string, example: "create_message", description: "Operation type"}
+                  client_id: {type: string, example: "temp-123", description: "Temporary client-side ID"}
+                  text: {type: string, example: "Hello from sync!", description: "Used in create_message"}
+                  conversation_id: {type: integer, example: 5, description: "Used in create_message"}
+                  id_activity: {type: integer, description: "Used in update/delete_activity"}
+                  name: {type: string, example: "New Task", description: "Used in create/update_activity"}
+                  description: {type: string, example: "Task details", description: "Used in create/update_activity"}
+                  deadline: {type: string, example: "2026-12-31T23:59:59Z", description: "Used in create/update_activity"}
+                  group_id: {type: integer, nullable: true, example: 10, description: "Used in create_activity"}
+  responses:
+    200:
+      description: "Sync completed"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: {type: string, example: "Sync completed"}
+              results:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    status: {type: string, example: "success"}
+                    client_id: {type: string, example: "temp-123"}
+    401:
+      description: "Unauthorized"

@@ -91,6 +91,52 @@ def sync_pull():
         "server_time": server_time.isoformat() if server_time else None,
     }, 200
 
+
+@sync_blueprint.route('/push', methods=["POST"])
+@jwt_required()
+@swag_from(load_yaml("documentation/sync.yaml", "sync_push"))
+# Logic of the function below was designed via AI consultation, manually implemented and AI refined
+# Processes sync operations (create/delete messages/activities)
+def sync_push():
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if current_user_id is None:
+        return {"message": "User not found!"}, 401
+
+    try:
+        operations = request.json.get("operations", [])
+    except:
+        return {"message": "Invalid format!"}, 400
+
+    if not isinstance(operations, list):
+        return {"message": "operations must be a list!"}, 400
+
+    results = []
+
+    for operation in operations:
+        operation_type = operation.get("op")
+        client_id = operation.get("client_id", "unknown")
+
+        try:
+            if operation_type == "create_message":
+                result = sync_create_message(current_user_id, operation)
+            elif operation_type == "delete_message":
+                result = sync_delete_message(current_user_id, operation)
+            elif operation_type == "create_activity":
+                result = sync_create_activity(current_user_id, operation)
+            else:
+                result = {"status": "error", "reason": f"unknown operation: {operation_type}"}
+        except Exception as e:
+            db.rollback()
+            result = {"status": "error", "reason": str(e)}
+
+        result["client_id"] = client_id
+        results.append(result)
+
+    return {"message": "Sync completed", "results": results}, 200
+
+
 # Function below was polished with AI (Gemini)
 # Creates a new encrypted message. User must be a participant of conversation.
 def sync_create_message(user_id, data):
@@ -145,3 +191,81 @@ def sync_create_message(user_id, data):
         pass
 
     return {"message": f"Message {message_id} was successfully created!"}
+
+
+# Function below was polished with AI (Gemini)
+# Deletes a message by ID. User must be sender or have 'delete_messages' permission.
+def sync_delete_message(user_id, data):
+    message_id = data.get("message_id")
+    conv_id = data.get("conversation_id")
+
+    if not message_id:
+        return {"message": "message_id is required"}
+
+    cursor.execute("""
+        SELECT m.sender_id
+        FROM message m
+        JOIN conversation c ON m.conversation_id = c.id
+        WHERE m.id = %s
+    """, (message_id,))
+    message = cursor.fetchone()
+
+    if message is None:
+        return {"message": "message_not_found"}
+
+    can_delete = False
+    if message["sender_id"] == user_id:
+        can_delete = True
+    elif conv_id:
+        cursor.execute(
+            'SELECT id_group FROM "group" WHERE conversation_id = %s', (conv_id,)
+        )
+        group_data = cursor.fetchone()
+        if group_data and check_permission(user_id, group_data["id_group"], "delete_messages"):
+            can_delete = True
+
+    if not can_delete:
+        return {"status": "conflict", "reason": "no_permission"}
+
+    cursor.execute("DELETE FROM message WHERE id = %s", (message_id,))
+    db.commit()
+    return {"status": "deleted", "server_id": message_id}
+
+
+# Function below was generated with AI (Gemini)
+# Creates a new activity in a group. Requires group membership and 'create_activity' permission.
+def sync_create_activity(user_id, data):
+    group_id = data.get("group_id")
+    name = data.get("name")
+    description = data.get("description")
+    deadline = data.get("deadline")
+
+    if not name:
+        return {"status": "error", "reason": "name is required"}
+
+    if group_id:
+        if not is_group_member(user_id, group_id):
+            return {"status": "conflict", "reason": "not_a_group_member"}
+
+        if not check_permission(user_id, group_id, "create_activity"):
+            return {"status": "conflict", "reason": "no_permission"}
+
+    cursor.execute("""
+        INSERT INTO activity (name, description, deadline, creator_id, group_id)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING id_activity
+    """, (name, description, deadline, user_id, group_id))
+    activity_id = cursor.fetchone()["id_activity"]
+    db.commit()
+
+    if group_id:
+        try:
+            ws_conn = get_db_connection()
+            try:
+                create_activity_notification(ws_conn, activity_id, group_id, user_id, name)
+            finally:
+                ws_conn.close()
+        except:
+            pass
+
+    return {"message": f"Successfully created activity with id {activity_id}!"}
