@@ -6,7 +6,13 @@ from psycopg2.extras import RealDictCursor
 import yaml
 
 load_dotenv()
-db = psycopg2.connect(host = "localhost", port = "5432", user = "postgres", password = os.getenv("MY_PASS"), database = "TeamsMeeter")
+db = psycopg2.connect(
+    host=os.getenv("DB_HOST", "localhost"),
+    port=os.getenv("DB_PORT", "5432"),
+    user=os.getenv("DB_USER", "postgres"),
+    password=os.getenv("MY_PASS"),
+    database=os.getenv("DB_NAME", "TeamsMeeter")
+)
 cursor = db.cursor(cursor_factory=RealDictCursor)
 
 # Verifies if a user has a specific permission in a group

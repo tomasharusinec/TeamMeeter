@@ -1,0 +1,160 @@
+CREATE TABLE "user" (
+    id_registration SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    registration_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    email VARCHAR(255) NOT NULL UNIQUE
+);
+
+CREATE TYPE conversation_type AS ENUM ('individual', 'group');
+
+CREATE TABLE conversation (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255), -- môže byť null pri súkromných chatoch
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_setting (
+    id_user_setting SERIAL PRIMARY KEY,
+    id_user INT NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    surname VARCHAR(255) NOT NULL,
+    birthdate DATE,
+    profile_picture BYTEA,
+    CONSTRAINT fk_user FOREIGN KEY (id_user) REFERENCES "user"(id_registration) ON DELETE CASCADE
+);
+
+CREATE TABLE "group" (
+    id_group SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    create_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    icon BYTEA,
+    qr_code TEXT,
+
+    CONSTRAINT fk_group_conversation 
+        FOREIGN KEY (conversation_id) 
+        REFERENCES conversation(id)
+);
+
+CREATE TABLE group_member (
+    group_id INT NOT NULL,
+    user_id INT NOT NULL,
+    PRIMARY KEY (group_id, user_id),
+    CONSTRAINT fk_group FOREIGN KEY (group_id) REFERENCES "group"(id_group) ON DELETE CASCADE,
+    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+);
+
+CREATE TABLE role (
+    id_role SERIAL PRIMARY KEY,
+    group_id INT NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    color VARCHAR(20),
+    CONSTRAINT fk_role_group FOREIGN KEY (group_id) REFERENCES "group"(id_group) ON DELETE CASCADE
+);
+
+CREATE TABLE user_role (
+    user_id INT NOT NULL,
+    role_id INT NOT NULL,
+    PRIMARY KEY (user_id, role_id),
+    CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE,
+    CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES role(id_role) ON DELETE CASCADE
+);
+
+CREATE TABLE permission (
+    id_permission SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE
+);
+
+CREATE TABLE role_permission (
+    role_id INT NOT NULL,
+    permission_id INT NOT NULL,
+    value BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (role_id, permission_id),
+    CONSTRAINT fk_rp_role FOREIGN KEY (role_id) REFERENCES role(id_role) ON DELETE CASCADE,
+    CONSTRAINT fk_rp_permission FOREIGN KEY (permission_id) REFERENCES permission(id_permission) ON DELETE CASCADE
+);
+
+CREATE TABLE activity (
+    id_activity SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    description TEXT,
+    creation_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    deadline DATE,
+    creator_id INT NOT NULL,
+    group_id INT,
+    CONSTRAINT fk_activity_creator FOREIGN KEY (creator_id) REFERENCES "user"(id_registration),
+    CONSTRAINT fk_activity_group FOREIGN KEY (group_id) REFERENCES "group"(id_group) ON DELETE CASCADE
+);
+
+CREATE TABLE activity_user (
+    id_user INT NOT NULL,
+    id_activity INT NOT NULL,
+    PRIMARY KEY (id_user, id_activity),
+    CONSTRAINT fk_au_user FOREIGN KEY (id_user) REFERENCES "user"(id_registration) ON DELETE CASCADE,
+    CONSTRAINT fk_au_activity FOREIGN KEY (id_activity) REFERENCES activity(id_activity) ON DELETE CASCADE
+);
+
+CREATE TABLE activity_role (
+    activity_id INT NOT NULL,
+    role_id INT NOT NULL,
+    PRIMARY KEY (activity_id, role_id),
+    CONSTRAINT fk_ar_activity FOREIGN KEY (activity_id) REFERENCES activity(id_activity) ON DELETE CASCADE,
+    CONSTRAINT fk_ar_role FOREIGN KEY (role_id) REFERENCES role(id_role) ON DELETE CASCADE
+);
+
+CREATE TABLE participant (
+    conversation_id INT NOT NULL,
+    user_id INT NOT NULL,
+    PRIMARY KEY (conversation_id, user_id),
+    CONSTRAINT fk_p_conv FOREIGN KEY (conversation_id) REFERENCES conversation(id) ON DELETE CASCADE,
+    CONSTRAINT fk_p_user FOREIGN KEY (user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+);
+
+CREATE TABLE file (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    extension VARCHAR(50) NOT NULL,
+    content BYTEA
+);
+
+CREATE TABLE message (
+    id SERIAL PRIMARY KEY,
+    conversation_id INT NOT NULL,
+    sender_id INT NOT NULL,
+    file_id INT,
+    text BYTEA NOT NULL,
+    CONSTRAINT fk_msg_conv FOREIGN KEY (conversation_id) REFERENCES conversation(id) ON DELETE CASCADE,
+    CONSTRAINT fk_msg_sender FOREIGN KEY (sender_id) REFERENCES "user"(id_registration),
+    CONSTRAINT fk_msg_file FOREIGN KEY (file_id) REFERENCES file(id) ON DELETE SET NULL
+);
+
+CREATE TABLE notification (
+    id_notification SERIAL PRIMARY KEY,
+    type INT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_notification (
+    notification_id INT NOT NULL,
+    user_id INT NOT NULL,
+    PRIMARY KEY (notification_id, user_id),
+    CONSTRAINT fk_un_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
+    CONSTRAINT fk_un_user FOREIGN KEY (user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+);
+
+CREATE TABLE message_notification (
+    notification_id INT NOT NULL,
+    message_id INT NOT NULL,
+    PRIMARY KEY (notification_id, message_id),
+    CONSTRAINT fk_mn_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
+    CONSTRAINT fk_mn_msg FOREIGN KEY (message_id) REFERENCES message(id) ON DELETE CASCADE
+);
+
+CREATE TABLE activity_notification (
+    notification_id INT NOT NULL,
+    activity_id INT NOT NULL,
+    PRIMARY KEY (notification_id, activity_id),
+    CONSTRAINT fk_an_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
+    CONSTRAINT fk_an_activity FOREIGN KEY (activity_id) REFERENCES activity(id_activity) ON DELETE CASCADE
+);

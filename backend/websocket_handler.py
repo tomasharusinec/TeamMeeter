@@ -20,11 +20,11 @@ sock = Sock()
 # Creates and returns a new PostgreSQL DB connection. Requires env credentials.
 def get_db_connection():
     return psycopg2.connect(
-        host="localhost",
-        port="5432",
-        user="postgres",
+        host=os.getenv("DB_HOST", "localhost"),
+        port=os.getenv("DB_PORT", "5432"),
+        user=os.getenv("DB_USER", "postgres"),
         password=os.getenv("MY_PASS"),
-        database="TeamsMeeter",
+        database=os.getenv("DB_NAME", "TeamsMeeter"),
     )
 
 # Creates a DB cursor returning dict results

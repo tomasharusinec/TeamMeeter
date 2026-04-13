@@ -1,3 +1,6 @@
+from init_db import init_db
+init_db()
+
 from flask import Flask
 from authorization import authorization_blueprint
 from activities import activities_blueprint
