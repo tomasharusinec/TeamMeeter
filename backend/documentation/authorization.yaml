@@ -38,7 +38,7 @@ register:
             invalid_format:
               value: {message: "Invalid register format!"}
             birthdate_future:
-              value: {message: "Dátum narodenia nemôže byť v budúcnosti!"}
+              value: {message: "Date of birth cannot be from the future!"}
     409:
       description: "Conflict - User, Username or Email already exists"
       content:
