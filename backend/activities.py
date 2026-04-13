@@ -263,6 +263,7 @@ def delete_activity(activity_id):
     return {"message": "Activity deleted successfully"}, 200
 
 
+# Lists users assigned to an activity. Requires activity access.
 @activities_blueprint.route('/<int:activity_id>/users', methods=["GET"])
 @swag_from(load_yaml("documentation/activities.yaml", "get_activity_users"))
 @jwt_required()
@@ -278,7 +279,9 @@ def get_activity_users(activity_id):
     group_id = info["group_id"]
 
     if group_id is None:
-        if info["creator_id"] != current_user_id:
+        cursor.execute("SELECT 1 FROM activity_user WHERE id_activity = %s AND id_user = %s", (activity_id, current_user_id))
+        is_assigned = cursor.fetchone() is not None
+        if info["creator_id"] != current_user_id and not is_assigned:
             return {"message": "You don't have access to this activity!"}, 403
     else:
         if not is_group_member(current_user_id, group_id):
@@ -298,7 +301,13 @@ def get_activity_users(activity_id):
             JOIN "user" u ON ur.user_id = u.id_registration
             JOIN user_setting us ON u.id_registration = us.id_user
             WHERE ar.activity_id = %s
-        """, (activity_id, activity_id))
+            UNION
+            SELECT u.id_registration, u.username, us.name, us.surname
+            FROM activity a
+            JOIN "user" u ON a.creator_id = u.id_registration
+            JOIN user_setting us ON u.id_registration = us.id_user
+            WHERE a.id_activity = %s AND a.group_id IS NULL
+        """, (activity_id, activity_id, activity_id))
     users = cursor.fetchall()
     return {"message": "Success", "users": users}, 200
 
