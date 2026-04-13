@@ -1,0 +1,210 @@
+<!-- Generated via Gemini (AI) to provide a simple method for WebSocket testing. -->
+<!DOCTYPE html>
+<html lang="sk">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: auto;
+        }
+
+        .panel {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .log-box {
+            border: 1px solid #333;
+            height: 300px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 13px;
+        }
+
+        input,
+        textarea,
+        button {
+            margin: 5px 0;
+            padding: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .btn-green {
+            background: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px;
+            font-weight: bold;
+        }
+
+        .btn-blue {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px;
+            font-weight: bold;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .row>* {
+            flex: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>WebSockets testing tool</h2>
+    <div class="panel">
+        <h3>1. Pripojenie</h3>
+        <input type="text" id="ws_url" value="ws://localhost:5000/websocket"
+            placeholder="WebSocket URL (napr. ws://localhost:5000/websocket)">
+        <input type="text" id="jwt_token" placeholder="Vložte váš platný JWT token tu...">
+        <button class="btn-green" id="btn_connect">Pripojiť sa</button>
+        <button class="btn-blue" id="btn_disconnect">Odpojiť sa</button>
+    </div>
+
+    <div class="panel">
+        <h3>2. Odoslanie správy</h3>
+        <div class="row">
+            <input type="number" id="conv_id" placeholder="ID Konverzácie (napr. 1)">
+            <input type="file" id="file_input">
+        </div>
+        <textarea id="msg_text" placeholder="Text správy..." rows="3"></textarea>
+        <button class="btn-blue" id="btn_send">Odoslať správu (s priloženým súborom alebo bez)</button>
+    </div>
+
+    <div class="panel">
+        <h3>Logy udalostí zo siete</h3>
+        <div id="log" class="log-box"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let pendingFile = null;
+
+        const logDiv = document.getElementById('log');
+        const btnConnect = document.getElementById('btn_connect');
+        const btnDisconnect = document.getElementById('btn_disconnect');
+        const btnSend = document.getElementById('btn_send');
+
+        function log(msg, color = 'black') {
+            const time = new Date().toLocaleTimeString();
+            const span = document.createElement('span');
+            span.style.color = color;
+            span.innerText = `[${time}] ${msg}\n`;
+            logDiv.appendChild(span);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        btnConnect.onclick = () => {
+            const url = document.getElementById('ws_url').value;
+            const token = document.getElementById('jwt_token').value;
+            if (!token) { alert('Zadajte JWT token pre autentifikáciu!'); return; }
+
+            log('Pripájanie na ' + url + '...', 'blue');
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                log('Spojenie otvorené. Odosielam auth token...', 'green');
+                ws.send(JSON.stringify({ type: 'auth', token: token }));
+            };
+
+            ws.onmessage = async (event) => {
+                let dataText = event.data;
+                log('SERVER: ' + dataText, '#3b5998');
+
+                try {
+                    let data = JSON.parse(dataText);
+
+                    if (data.type === 'auth_success') {
+                        log(`Úspešne autentifikovaný | User ID: ${data.user_id} | Meno: ${data.username}`, '#28a745');
+                    }
+
+                    if (data.type === 'awaiting_file' && pendingFile) {
+                        log('Server signalizuje čakanie na súbor (awaiting_file). Posielam stream...', '#17a2b8');
+                        const buffer = await pendingFile.arrayBuffer();
+                        ws.send(buffer);
+                        log('Binárny buffer úspešne odoslaný na server.', '#28a745');
+                        pendingFile = null;
+                    }
+
+                } catch (e) {
+                }
+            };
+
+            ws.onerror = (e) => {
+                log('Chyba WebSocket spojenia!', 'red');
+            };
+
+            ws.onclose = () => {
+                log('Spojenie bolo ukončené.', 'red');
+                ws = null;
+                pendingFile = null;
+            };
+        };
+
+        btnDisconnect.onclick = () => {
+            if (ws) ws.close();
+        };
+
+        btnSend.onclick = () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Nemáte aktívne spojenie. Najprv sa pripojte!', 'red');
+                return;
+            }
+
+            const convId = parseInt(document.getElementById('conv_id').value);
+            const text = document.getElementById('msg_text').value;
+            const fileInput = document.getElementById('file_input');
+
+            if (isNaN(convId)) {
+                alert('Zadajte platné (číselné) ID konverzácie!');
+                return;
+            }
+
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                pendingFile = file;
+                const extension = file.name.split('.').pop() || 'tmp';
+
+                let payload = {
+                    type: "send_message_with_file",
+                    conversation_id: convId,
+                    text: text,
+                    file_name: file.name,
+                    file_extension: extension
+                };
+                log('CLIENT (Meta Data Súboru): ' + JSON.stringify(payload), '#e67e22');
+                ws.send(JSON.stringify(payload));
+            } else {
+                let payload = {
+                    type: "send_message",
+                    conversation_id: convId,
+                    text: text
+                };
+                log('CLIENT (Textová správa): ' + JSON.stringify(payload), '#e67e22');
+                ws.send(JSON.stringify(payload));
+            }
+        };
+    </script>
+</body>
+
+</html>

@@ -230,7 +230,7 @@ def handle_send_message(ws, conn, user_id, username, data):
             "sender_username": username,
             "text": text,
         }
-        # broadcast_to_conversation(conv_id, broadcast_payload, db_conn=conn) TBA
+        broadcast_to_conversation(conv_id, broadcast_payload, db_conn=conn)
         create_message_notification(conn, message_id, conv_id, user_id)
 
     except Exception as e:
@@ -375,7 +375,7 @@ def broadcast_to_conversation(conversation_id: int, payload: dict, db_conn=None)
             db_conn.close()
 
 # Function below was generated using AI with manual refinements
-# Main websocket endpoint handling auth and message routing. Requires JWT auth message.
+# Main websocket endpoint handling auth and message routing.
 @sock.route("/websocket")
 def websocket_endpoint(ws):
     user_id = None

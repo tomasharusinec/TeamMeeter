@@ -233,6 +233,7 @@ get_profile_picture:
       content:
         application/octet-stream:
           schema:
+            type: string
             format: binary
     404:
       description: "User or Profile picture not found"
@@ -258,6 +259,7 @@ get_my_profile_picture:
       content:
         application/octet-stream:
           schema:
+            type: string
             format: binary
     401:
       description: "Unauthorized"
@@ -297,6 +299,7 @@ update_my_profile_picture:
             - image
           properties:
             image:
+              type: string
               format: binary
               description: "Picture (JPEG or PNG)"
   responses:

@@ -204,7 +204,7 @@ def sync_delete_message(user_id, data):
     conv_id = data.get("conversation_id")
 
     if not message_id:
-        return {"message": "message_id is required"}
+        return {"message": "Message_id is required!"}
 
     cursor.execute("""
         SELECT m.sender_id
@@ -215,7 +215,7 @@ def sync_delete_message(user_id, data):
     message = cursor.fetchone()
 
     if message is None:
-        return {"message": "message_not_found"}
+        return {"message": "Message was not found!"}
 
     can_delete = False
     if message["sender_id"] == user_id:
@@ -229,7 +229,7 @@ def sync_delete_message(user_id, data):
             can_delete = True
 
     if not can_delete:
-        return {"status": "conflict", "reason": "no_permission"}
+        return {"message": "You dont have permission to delete messages!"}
 
     cursor.execute("DELETE FROM message WHERE id = %s", (message_id,))
     db.commit()
@@ -245,14 +245,14 @@ def sync_create_activity(user_id, data):
     deadline = data.get("deadline")
 
     if not name:
-        return {"status": "error", "reason": "name is required"}
+        return {"message": "Group name is required"}
 
     if group_id:
         if not is_group_member(user_id, group_id):
-            return {"status": "conflict", "reason": "not_a_group_member"}
+            return {"message": "You are not a group member!"}
 
         if not check_permission(user_id, group_id, "create_activity"):
-            return {"status": "conflict", "reason": "no_permission"}
+            return {"message": "You dont have permision to create activity!"}
 
     cursor.execute("""
         INSERT INTO activity (name, description, deadline, creator_id, group_id)
@@ -291,7 +291,7 @@ def sync_update_activity(user_id, data):
     )
     activity = cursor.fetchone()
     if activity is None:
-        return {"message": "activity_not_found"}
+        return {"message": "Activity was not found!"}
 
     group_id = activity["group_id"]
     creator_id = activity["creator_id"]
@@ -355,9 +355,9 @@ def sync_delete_activity(user_id, data):
     else:
         is_creator = False
     if not is_creator and not check_permission(user_id, group_id, "delete_activity"):
-        return {"status": "conflict", "reason": "no_permission"}
+        return {"message": "You dont have permission to delete activity!"}
 
     cursor.execute("DELETE FROM activity WHERE id_activity = %s", (activity_id,))
     db.commit()
 
-    return {"status": "deleted", "server_id": activity_id}
+    return {"message": f"Activity {activity_id} was successfully deleted!"}
