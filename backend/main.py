@@ -2,6 +2,7 @@ from init_db import init_db
 init_db()
 
 from flask import Flask
+from flask_cors import CORS
 from authorization import authorization_blueprint
 from activities import activities_blueprint
 from notifications import notifications_blueprint
@@ -17,6 +18,7 @@ from websocket_handler import sock
 from sync import sync_blueprint
 
 app = Flask(__name__)
+CORS(app)
 sock.init_app(app)
 
 template = {
