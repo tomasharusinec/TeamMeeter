@@ -50,9 +50,13 @@ class _LoginScreenState extends State<LoginScreen>
         );
       } catch (e) {
         if (mounted) {
+          final cleaned = e.toString().replaceAll('Exception: ', '').trim();
+          final message = (cleaned.isEmpty || cleaned == 'Exception')
+              ? 'Wrong credentials'
+              : cleaned;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(e.toString().replaceAll('Exception: ', '')),
+              content: Text(message),
               backgroundColor: const Color(0xFF8B1A2C),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(

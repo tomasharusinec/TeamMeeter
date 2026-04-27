@@ -30,9 +30,7 @@ class MyApp extends StatelessWidget {
             onSecondary: Colors.white,
             onSurface: Colors.white,
           ),
-          textTheme: GoogleFonts.interTextTheme(
-            ThemeData.dark().textTheme,
-          ),
+          textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
           useMaterial3: true,
         ),
         home: const AuthWrapper(),
@@ -48,7 +46,7 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
-        if (authProvider.isLoading) {
+        if (authProvider.isInitializing) {
           return Scaffold(
             body: Container(
               decoration: const BoxDecoration(

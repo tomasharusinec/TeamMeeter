@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../models/activity.dart';
 import '../models/group.dart';
+import 'group_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,32 +18,61 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Activity> _activities = [];
   List<Group> _groups = [];
   bool _isLoading = true;
+  bool _isGroupsLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      authProvider.ensureCurrentUserLoaded();
+    });
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    await Future.wait([
+      _loadActivities(showError: false),
+      _loadGroups(showError: false),
+    ]);
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadActivities({bool showError = true}) async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final api = authProvider.apiService;
-      final results = await Future.wait([
-        api.getMyActivities(),
-        api.getGroups(),
-      ]);
-      if (mounted) {
-        setState(() {
-          _activities = results[0] as List<Activity>;
-          _groups = results[1] as List<Group>;
-        });
-      }
+      final activities = await api.getMyActivities();
+      if (mounted) setState(() => _activities = activities);
     } catch (e) {
-      // Show empty state on error
+      if (!mounted || !showError) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    }
+  }
+
+  Future<void> _loadGroups({bool showError = true}) async {
+    if (mounted) setState(() => _isGroupsLoading = true);
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final api = authProvider.apiService;
+      final groups = await api.getGroups();
+      if (mounted) setState(() => _groups = groups);
+    } catch (e) {
+      if (!mounted || !showError) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isGroupsLoading = false);
     }
   }
 
@@ -67,9 +98,13 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildTopBar(),
               Expanded(
-                child: _currentNavIndex == 1
-                    ? _buildTasksView()
-                    : _buildGroupsView(),
+                child: _currentNavIndex == 3
+                    ? _buildGroupsView()
+                    : _currentNavIndex == 2
+                        ? _buildChatView()
+                        : _currentNavIndex == 0
+                            ? _buildCalendarView()
+                            : _buildTasksView(),
               ),
             ],
           ),
@@ -110,7 +145,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Expanded(
             child: Text(
-              _currentNavIndex == 1 ? 'My tasks' : 'My groups',
+              _currentNavIndex == 3
+                  ? 'My groups'
+                  : _currentNavIndex == 2
+                      ? 'Chat'
+                      : _currentNavIndex == 0
+                          ? 'Calendar'
+                          : 'My tasks',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
@@ -154,75 +195,46 @@ class _HomeScreenState extends State<HomeScreen> {
           child: CircularProgressIndicator(color: Colors.white));
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      color: const Color(0xFF8B1A2C),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            // Two task columns
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                    child: _buildTaskColumn('To-do', _activities)),
+                Expanded(child: _buildTaskColumn('To-do', _activities)),
                 const SizedBox(width: 12),
-                Expanded(
-                    child: _buildTaskColumn('In progress', <Activity>[])),
+                Expanded(child: _buildTaskColumn('In progress', <Activity>[])),
               ],
             ),
-            const SizedBox(height: 16),
-            // Pagination dots
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                3,
-                (i) => Container(
-                  width: i == 0 ? 10 : 8,
-                  height: i == 0 ? 10 : 8,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: i == 0 ? Colors.white : Colors.white30,
-                  ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton(
+              onPressed: () {},
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2D1515),
+                foregroundColor: Colors.white70,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.white.withAlpha(26)),
                 ),
               ),
+              child: const Text('View completed tasks',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400)),
             ),
-            const SizedBox(height: 16),
-            // View completed tasks button
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2D1515),
-                  foregroundColor: Colors.white70,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                        color: Colors.white.withAlpha(26)),
-                  ),
-                ),
-                child: const Text('View completed tasks',
-                    style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w400)),
-              ),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildTaskColumn(String title, List<Activity> activities) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 300),
       decoration: BoxDecoration(
         color: const Color(0xFF1A0A0A).withAlpha(204),
         borderRadius: BorderRadius.circular(16),
@@ -324,67 +336,125 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ── Groups View ──────────────────────────────────────────
+  Widget _buildCalendarView() {
+    return const Center(
+      child: Text(
+        'Calendar coming soon',
+        style: TextStyle(color: Colors.white70, fontSize: 16),
+      ),
+    );
+  }
+
+  Widget _buildChatView() {
+    return const Center(
+      child: Text(
+        'Chat coming soon',
+        style: TextStyle(color: Colors.white70, fontSize: 16),
+      ),
+    );
+  }
+
   Widget _buildGroupsView() {
-    if (_isLoading) {
+    if (_isLoading || _isGroupsLoading) {
       return const Center(
           child: CircularProgressIndicator(color: Colors.white));
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      color: const Color(0xFF8B1A2C),
-      child: _groups.isEmpty
-          ? ListView(
-              children: [
-                const SizedBox(height: 120),
-                Icon(Icons.group_outlined,
-                    size: 64, color: Colors.white.withAlpha(77)),
-                const SizedBox(height: 16),
-                const Text('No groups yet',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white38)),
-                const SizedBox(height: 12),
-                Center(
-                  child: ElevatedButton.icon(
-                    onPressed: _showCreateGroupDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Create Group'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B1A2C),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
-                    ),
-                  ),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: _loadGroups,
+          color: const Color(0xFF8B1A2C),
+          child: _groups.isEmpty
+              ? ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    const SizedBox(height: 120),
+                    Icon(Icons.group_outlined,
+                        size: 64, color: Colors.white.withAlpha(77)),
+                    const SizedBox(height: 16),
+                    const Text('No groups yet',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white38)),
+                  ],
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                  itemCount: _groups.length,
+                  itemBuilder: (context, index) {
+                    final group = _groups[index];
+                    return _buildGroupCard(group);
+                  },
+                ),
+        ),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A0A0A).withAlpha(210),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withAlpha(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(50),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _groups.length + 1,
-              itemBuilder: (context, index) {
-                if (index == _groups.length) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: Center(
-                      child: ElevatedButton.icon(
-                        onPressed: _showCreateGroupDialog,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Create Group'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B1A2C),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20)),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                final group = _groups[index];
-                return _buildGroupCard(group);
-              },
             ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildGroupActionButton(
+                  label: 'Join',
+                  icon: Icons.group_add_outlined,
+                  onPressed: _showJoinGroupDialog,
+                  isPrimary: false,
+                ),
+                const SizedBox(height: 8),
+                _buildGroupActionButton(
+                  label: 'Create',
+                  icon: Icons.add,
+                  onPressed: _showCreateGroupDialog,
+                  isPrimary: true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGroupActionButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onPressed,
+    required bool isPrimary,
+  }) {
+    return SizedBox(
+      width: 170,
+      height: 44,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor:
+              isPrimary ? const Color(0xFF8B1A2C) : const Color(0xFF2A1111),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.white.withAlpha(isPrimary ? 0 : 38)),
+          ),
+        ),
+        icon: Icon(icon, size: 18),
+        label: Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
+      ),
     );
   }
 
@@ -397,25 +467,22 @@ class _HomeScreenState extends State<HomeScreen> {
         border: Border.all(color: Colors.white.withAlpha(13)),
       ),
       child: ListTile(
+        onTap: () async {
+          await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => GroupDetailScreen(group: group),
+            ),
+          );
+          if (mounted) {
+            _loadData();
+          }
+        },
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2D1515),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Center(
-            child: Text(
-              group.name.isNotEmpty ? group.name[0].toUpperCase() : '?',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+        leading: _GroupListAvatar(
+          groupId: group.idGroup,
+          hasIcon: group.hasIcon,
+          fallbackLetter: group.name.isNotEmpty ? group.name[0].toUpperCase() : '?',
         ),
         title: Text(group.name,
             style: const TextStyle(
@@ -427,6 +494,51 @@ class _HomeScreenState extends State<HomeScreen> {
         trailing:
             const Icon(Icons.chevron_right, color: Colors.white38),
       ),
+    );
+  }
+
+  Widget _GroupListAvatar({
+    required int groupId,
+    required bool hasIcon,
+    required String fallbackLetter,
+  }) {
+    final token = Provider.of<AuthProvider>(context, listen: false).token;
+    final imageUrl = '${ApiService.baseUrl}/groups/$groupId/icon';
+
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFF2D1515),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasIcon && token != null
+          ? Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              headers: {'Authorization': 'Bearer $token'},
+              errorBuilder: (_, __, ___) => Center(
+                child: Text(
+                  fallbackLetter,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            )
+          : Center(
+              child: Text(
+                fallbackLetter,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
     );
   }
 
@@ -475,7 +587,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              authProvider.user?.displayName ?? 'User',
+              authProvider.user?.displayName ??
+                  (authProvider.token != null ? 'Loading profile...' : 'User'),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -513,6 +626,61 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ── Create Group Dialog ──────────────────────────────────
+  void _showJoinGroupDialog() {
+    final codeController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A0A0A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title:
+            const Text('Join Group', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: codeController,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Invite code or group ID',
+            hintStyle: const TextStyle(color: Colors.white38),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.white.withAlpha(51)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF8B1A2C)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(this.context).showSnackBar(
+                const SnackBar(
+                  content: Text('Join group coming soon'),
+                  backgroundColor: Color(0xFF8B1A2C),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B1A2C),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Join'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showCreateGroupDialog() {
     final nameController = TextEditingController();
     showDialog(
@@ -548,14 +716,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (nameController.text.isNotEmpty) {
+              final groupName = nameController.text.trim();
+              if (groupName.isNotEmpty) {
                 try {
                   final api =
                       Provider.of<AuthProvider>(context, listen: false)
                           .apiService;
-                  await api.createGroup(nameController.text);
+                  await api.createGroup(groupName);
                   if (context.mounted) Navigator.pop(context);
-                  _loadData();
+                  await _loadGroups();
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -594,7 +763,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             _buildNavItem(Icons.calendar_month_outlined, 0),
             _buildNavItem(Icons.home_rounded, 1, isCenter: true),
-            _buildNavItem(Icons.people_outline, 2),
+            _buildNavItem(Icons.chat_bubble_outline, 2),
+            _buildNavItem(Icons.people_outline, 3),
           ],
         ),
       ),
@@ -605,7 +775,12 @@ class _HomeScreenState extends State<HomeScreen> {
       {bool isCenter = false}) {
     final isActive = _currentNavIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentNavIndex = index),
+      onTap: () {
+        setState(() => _currentNavIndex = index);
+        if (index == 3) {
+          _loadGroups();
+        }
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.all(isCenter ? 14 : 10),

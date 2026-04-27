@@ -18,11 +18,18 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 # Verifies if a user has a specific permission in a group
 def check_permission(user_id, group_id, permission_name):
     cursor.execute("""
-        SELECT rp.value FROM role_permission rp
-        JOIN role r ON r.id_role = rp.role_id
-        JOIN permission p ON p.id_permission = rp.permission_id
-        JOIN user_role ur ON ur.role_id = r.id_role
-        WHERE ur.user_id = %s AND r.group_id = %s AND p.name = %s AND rp.value = TRUE
+        SELECT 1
+        FROM user_role ur
+        JOIN role r ON ur.role_id = r.id_role
+        LEFT JOIN role_permission rp ON rp.role_id = r.id_role
+        LEFT JOIN permission p ON p.id_permission = rp.permission_id
+        WHERE ur.user_id = %s
+          AND r.group_id = %s
+          AND (
+                (p.name = %s AND rp.value = TRUE)
+                OR r.name = 'Manager'
+              )
+        LIMIT 1
     """, (user_id, group_id, permission_name))
     return cursor.fetchone() is not None
 

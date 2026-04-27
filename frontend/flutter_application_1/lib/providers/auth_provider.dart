@@ -7,16 +7,18 @@ class AuthProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   String? _token;
   User? _user;
-  bool _isLoading = true;
+  bool _isLoading = false;
+  bool _isInitializing = true;
 
   String? get token => _token;
   User? get user => _user;
   bool get isLoading => _isLoading;
+  bool get isInitializing => _isInitializing;
   bool get isAuthenticated => _token != null && _user != null;
   ApiService get apiService => _apiService;
 
   Future<void> loadSavedToken() async {
-    _isLoading = true;
+    _isInitializing = true;
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
@@ -36,7 +38,7 @@ class AuthProvider with ChangeNotifier {
         await prefs.remove('auth_token');
       }
     }
-    _isLoading = false;
+    _isInitializing = false;
     notifyListeners();
   }
 
@@ -113,5 +115,18 @@ class AuthProvider with ChangeNotifier {
     await prefs.remove('auth_token');
 
     notifyListeners();
+  }
+
+  Future<void> ensureCurrentUserLoaded() async {
+    if (_token == null || _user != null) return;
+    try {
+      final loadedUser = await _apiService.getCurrentUser();
+      if (loadedUser != null) {
+        _user = loadedUser;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Keep silent; callers may decide whether to show an error.
+    }
   }
 }

@@ -1,0 +1,546 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../models/group.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+import 'group_basic_information_screen.dart';
+import 'group_members_screen.dart';
+
+class GroupDetailScreen extends StatefulWidget {
+  final Group group;
+
+  const GroupDetailScreen({super.key, required this.group});
+
+  @override
+  State<GroupDetailScreen> createState() => _GroupDetailScreenState();
+}
+
+class _GroupDetailScreenState extends State<GroupDetailScreen> {
+  bool _isDeleting = false;
+  bool _isLeaving = false;
+  Group? _fullGroup;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGroupDetails();
+  }
+
+  Future<void> _loadGroupDetails() async {
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final group = await api.getGroupDetails(widget.group.idGroup);
+      if (mounted) setState(() => _fullGroup = group);
+    } catch (_) {
+      // Ignore for now; option checks handle permission/errors.
+    }
+  }
+
+  Future<void> _openIfAuthorized({
+    required Future<void> Function() accessCheck,
+    required String title,
+  }) async {
+    try {
+      await accessCheck();
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _GroupOptionPlaceholderScreen(title: title),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteGroup() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A0A0A),
+        title: const Text('Delete group', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to delete "${widget.group.name}"?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B1A2C),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    setState(() => _isDeleting = true);
+
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      await api.deleteGroup(widget.group.idGroup);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isDeleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    }
+  }
+
+  Future<void> _leaveGroup() async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = auth.user?.idRegistration;
+    if (currentUserId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to identify current user'),
+          backgroundColor: Color(0xFF8B1A2C),
+        ),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A0A0A),
+        title: const Text('Leave group', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to leave "${widget.group.name}"?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B1A2C),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLeaving = true);
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      await api.removeGroupMember(
+        groupId: widget.group.idGroup,
+        userId: currentUserId,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLeaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final shownGroup = _fullGroup ?? widget.group;
+    final token = authProvider.token;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Group'),
+        centerTitle: true,
+        backgroundColor: const Color(0xFF1A0A0A),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF8B1A2C),
+              Color(0xFF3D0C0C),
+              Color(0xFF1A0A0A),
+              Color(0xFF0D0D0D),
+            ],
+            stops: [0.0, 0.25, 0.55, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A0A0A).withAlpha(190),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withAlpha(18)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Selected group',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _GroupAvatar(
+                        groupId: shownGroup.idGroup,
+                        hasIcon: shownGroup.hasIcon,
+                        token: token,
+                        size: 64,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        shownGroup.name,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _OptionButton(
+                  text: 'Basic information',
+                  icon: Icons.info_outline,
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => GroupBasicInformationScreen(
+                          groupId: widget.group.idGroup,
+                        ),
+                      ),
+                    );
+                    if (mounted) {
+                      _loadGroupDetails();
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                _OptionButton(
+                  text: 'Members',
+                  icon: Icons.group_outlined,
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => GroupMembersScreen(
+                          groupId: widget.group.idGroup,
+                          groupName: shownGroup.name,
+                        ),
+                      ),
+                    );
+                    if (mounted) {
+                      _loadGroupDetails();
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                _OptionButton(
+                  text: 'Roles',
+                  icon: Icons.security_outlined,
+                  onPressed: () => _openIfAuthorized(
+                    title: 'Roles',
+                    accessCheck: () => api.getGroupRoles(widget.group.idGroup),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _OptionButton(
+                  text: 'Chat',
+                  icon: Icons.chat_bubble_outline,
+                  onPressed: () => _openIfAuthorized(
+                    title: 'Chat',
+                    accessCheck: () async {
+                      final details = _fullGroup ??
+                          await api.getGroupDetails(widget.group.idGroup);
+                      final conversationId = details.conversationId;
+                      if (conversationId == null) {
+                        throw Exception('Chat pre túto skupinu nie je dostupný');
+                      }
+                      await api.getConversation(conversationId);
+                    },
+                  ),
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isLeaving ? null : _leaveGroup,
+                    icon: _isLeaving
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFFFB3B3),
+                            ),
+                          )
+                        : const Icon(Icons.exit_to_app_rounded, size: 18),
+                    label: Text(
+                      _isLeaving ? 'Leaving...' : 'Leave Group',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFFFB3B3),
+                      side: BorderSide(color: Colors.white.withAlpha(40)),
+                      backgroundColor: const Color(0xFF1A0A0A).withAlpha(90),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isDeleting ? null : _deleteGroup,
+                    icon: _isDeleting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFE57373),
+                            ),
+                          )
+                        : const Icon(Icons.delete_forever_outlined, size: 22),
+                    label: Text(
+                      _isDeleting ? 'Deleting...' : 'Delete Group',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFE57373),
+                      side: const BorderSide(color: Color(0xFFE57373), width: 1.4),
+                      backgroundColor: const Color(0xFF1A0A0A).withAlpha(120),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OptionButton extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _OptionButton({
+    required this.text,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Row(
+          children: [
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white60),
+          ],
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF2A1111),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          side: BorderSide(color: Colors.white.withAlpha(20)),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupOptionPlaceholderScreen extends StatelessWidget {
+  final String title;
+
+  const _GroupOptionPlaceholderScreen({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: const Color(0xFF1A0A0A),
+      ),
+      body: const Center(
+        child: Text(
+          'Coming soon',
+          style: TextStyle(color: Colors.white70, fontSize: 16),
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupAvatar extends StatelessWidget {
+  final int groupId;
+  final bool hasIcon;
+  final String? token;
+  final double size;
+
+  const _GroupAvatar({
+    required this.groupId,
+    required this.hasIcon,
+    required this.token,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = '${ApiService.baseUrl}/groups/$groupId/icon';
+    return GestureDetector(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(20),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A0A0A),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withAlpha(26)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: hasIcon && token != null
+                        ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.contain,
+                            headers: {'Authorization': 'Bearer $token'},
+                            errorBuilder: (_, __, ___) => const SizedBox(
+                              height: 220,
+                              child: Center(
+                                child: Icon(
+                                  Icons.groups_rounded,
+                                  color: Colors.white70,
+                                  size: 72,
+                                ),
+                              ),
+                            ),
+                          )
+                        : const SizedBox(
+                            height: 220,
+                            child: Center(
+                              child: Icon(
+                                Icons.groups_rounded,
+                                color: Colors.white70,
+                                size: 72,
+                              ),
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withAlpha(80), width: 1.5),
+          color: const Color(0xFF2A1111),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: hasIcon && token != null
+            ? Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                headers: {'Authorization': 'Bearer $token'},
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.groups_rounded,
+                  color: Colors.white70,
+                  size: 28,
+                ),
+              )
+            : const Icon(
+                Icons.groups_rounded,
+                color: Colors.white70,
+                size: 28,
+              ),
+      ),
+    );
+  }
+}

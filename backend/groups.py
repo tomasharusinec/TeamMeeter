@@ -359,7 +359,10 @@ def remove_group_member(group_id, user_id):
         cursor.execute("""
                         DELETE FROM user_role 
                         WHERE user_id = %s
-                        """, (user_id, ))
+                          AND role_id IN (
+                              SELECT id_role FROM role WHERE group_id = %s
+                          )
+                        """, (user_id, group_id))
         cursor.execute("""
                        DELETE
                        FROM group_member
