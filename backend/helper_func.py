@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import yaml
+from datetime import datetime, timezone
 
 load_dotenv()
 db = psycopg2.connect(
@@ -13,47 +14,83 @@ db = psycopg2.connect(
     password=os.getenv("MY_PASS"),
     database=os.getenv("DB_NAME", "TeamsMeeter")
 )
-cursor = db.cursor(cursor_factory=RealDictCursor)
 
 # Verifies if a user has a specific permission in a group
 def check_permission(user_id, group_id, permission_name):
-    cursor.execute("""
-        SELECT 1
-        FROM user_role ur
-        JOIN role r ON ur.role_id = r.id_role
-        LEFT JOIN role_permission rp ON rp.role_id = r.id_role
-        LEFT JOIN permission p ON p.id_permission = rp.permission_id
-        WHERE ur.user_id = %s
-          AND r.group_id = %s
-          AND (
-                (p.name = %s AND rp.value = TRUE)
-                OR r.name = 'Manager'
-              )
-        LIMIT 1
-    """, (user_id, group_id, permission_name))
-    return cursor.fetchone() is not None
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
+            SELECT 1
+            FROM user_role ur
+            JOIN role r ON ur.role_id = r.id_role
+            LEFT JOIN role_permission rp ON rp.role_id = r.id_role
+            LEFT JOIN permission p ON p.id_permission = rp.permission_id
+            WHERE ur.user_id = %s
+              AND r.group_id = %s
+              AND (
+                    (p.name = %s AND rp.value = TRUE)
+                    OR r.name = 'Manager'
+                  )
+            LIMIT 1
+        """, (user_id, group_id, permission_name))
+        return cursor.fetchone() is not None
 
 
 # Checks if a user is a member of a group
 def is_group_member(user_id, group_id):
-    cursor.execute("""
-        SELECT 1 FROM group_member WHERE user_id = %s AND group_id = %s
-    """, (user_id, group_id))
-    return cursor.fetchone() is not None
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
+            SELECT 1 FROM group_member WHERE user_id = %s AND group_id = %s
+        """, (user_id, group_id))
+        return cursor.fetchone() is not None
 
 # Gets user ID based on username from JWT identity
 def get_current_user_id(identity):
-    cursor.execute('SELECT id_registration FROM "user" WHERE username = %s', (identity,))
-    result = cursor.fetchone()
-    if result:
-        return result["id_registration"]
-    return None
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        # Preferred current format: JWT identity is username.
+        cursor.execute('SELECT id_registration FROM "user" WHERE username = %s', (identity,))
+        result = cursor.fetchone()
+        if result:
+            return result["id_registration"]
+
+        # Backward compatibility: older tokens may store numeric user id.
+        numeric_identity = None
+        if isinstance(identity, int):
+            numeric_identity = identity
+        elif isinstance(identity, str) and identity.isdigit():
+            numeric_identity = int(identity)
+
+        if numeric_identity is not None:
+            cursor.execute('SELECT id_registration FROM "user" WHERE id_registration = %s', (numeric_identity,))
+            result = cursor.fetchone()
+            if result:
+                return result["id_registration"]
+
+        return None
 
 # Loads specific key from a YAML file for Swagger documentation
 def load_yaml(path, key):
     with open(path) as file:
         file_dict = yaml.safe_load(file)
         return file_dict[key]
+
+def parse_client_deadline(deadline_str):
+    if not deadline_str:
+        return None
+
+    if isinstance(deadline_str, datetime):
+        parsed = deadline_str
+    elif isinstance(deadline_str, str):
+        normalized = deadline_str.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            raise ValueError("Invalid date format!")
+    else:
+        raise ValueError("Invalid date format!")
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 # Syncs required permissions from JSON config to database
 def sync_permissions():

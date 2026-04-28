@@ -4,7 +4,7 @@ from flask import request, Blueprint
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from cryptography.fernet import Fernet
-from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml
+from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml, parse_client_deadline
 from websocket_handler import broadcast_to_conversation, create_message_notification, get_db_connection, create_activity_notification
 
 sync_blueprint = Blueprint('sync', __name__)
@@ -243,6 +243,12 @@ def sync_create_activity(user_id, data):
     name = data.get("name")
     description = data.get("description")
     deadline = data.get("deadline")
+    parsed_deadline = None
+    if deadline:
+        try:
+            parsed_deadline = parse_client_deadline(deadline)
+        except ValueError:
+            return {"message": "Invalid date format!"}
 
     if not name:
         return {"message": "Group name is required"}
@@ -258,7 +264,7 @@ def sync_create_activity(user_id, data):
         INSERT INTO activity (name, description, deadline, creator_id, group_id)
         VALUES (%s, %s, %s, %s, %s)
         RETURNING id_activity
-    """, (name, description, deadline, user_id, group_id))
+    """, (name, description, parsed_deadline, user_id, group_id))
     activity_id = cursor.fetchone()["id_activity"]
     db.commit()
 
@@ -281,6 +287,12 @@ def sync_update_activity(user_id, data):
     name = data.get("name")
     description = data.get("description")
     deadline = data.get("deadline")
+    parsed_deadline = None
+    if deadline:
+        try:
+            parsed_deadline = parse_client_deadline(deadline)
+        except ValueError:
+            return {"message": "Invalid date format!"}
 
     if not activity_id:
         return {"status": "error", "reason": "activity_id is required"}
@@ -322,7 +334,7 @@ def sync_update_activity(user_id, data):
             description = COALESCE(%s, description),
             deadline = COALESCE(%s, deadline)
         WHERE id_activity = %s
-    """, (name, description, deadline, activity_id))
+    """, (name, description, parsed_deadline, activity_id))
     db.commit()
 
     return {"message": f"Successfully created activity with id {activity_id}!"}

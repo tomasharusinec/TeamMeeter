@@ -4,6 +4,8 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/activity.dart';
 import '../models/group.dart';
+import 'activity_detail_dialog.dart';
+import 'calendar_screen.dart';
 import 'group_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -292,56 +294,67 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTaskItem(Activity activity) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F0F0),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(38),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            activity.name,
-            style: const TextStyle(
-              color: Color(0xFF333333),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (activity.deadline != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              activity.deadline!,
-              style: const TextStyle(
-                color: Color(0xFF888888),
-                fontSize: 10,
-              ),
+    return GestureDetector(
+      onTap: () => _showActivityDetail(activity),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F0F0),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(38),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
             ),
           ],
-        ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              activity.name,
+              style: const TextStyle(
+                color: Color(0xFF333333),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (activity.deadline != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                activity.formattedDeadline,
+                style: const TextStyle(
+                  color: Color(0xFF888888),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showActivityDetail(Activity activity) {
+    showDialog(
+      context: context,
+      builder: (context) => ActivityDetailDialog(
+        activity: activity,
+        onDeleted: _loadData,
       ),
     );
   }
 
   // ── Groups View ──────────────────────────────────────────
   Widget _buildCalendarView() {
-    return const Center(
-      child: Text(
-        'Calendar coming soon',
-        style: TextStyle(color: Colors.white70, fontSize: 16),
-      ),
+    return CalendarScreen(
+      groups: _groups,
+      onDataChanged: _loadData,
     );
   }
 
@@ -777,7 +790,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () {
         setState(() => _currentNavIndex = index);
-        if (index == 3) {
+        if (index == 3 || index == 0) {
           _loadGroups();
         }
       },

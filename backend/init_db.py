@@ -2,6 +2,34 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 
+def _migrate_activity_deadline_column(cursor, conn):
+    cursor.execute("""
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'activity'
+          AND column_name = 'deadline'
+    """)
+    row = cursor.fetchone()
+    if row is None:
+        return
+
+    current_type = row[0]
+    if current_type == 'timestamp with time zone':
+        return
+
+    print("Migrating activity.deadline to TIMESTAMPTZ.")
+    cursor.execute("""
+        ALTER TABLE activity
+        ALTER COLUMN deadline TYPE TIMESTAMPTZ
+        USING CASE
+            WHEN deadline IS NULL THEN NULL
+            ELSE deadline::timestamp AT TIME ZONE 'UTC'
+        END
+    """)
+    conn.commit()
+    print("Migration finished: activity.deadline is TIMESTAMPTZ.")
+
 # This function was generated using AI (Gemini) with slight manual refinements
 def init_db():
     """
@@ -77,6 +105,13 @@ def init_db():
                 raise e
         else:
             print("Tables already exist. Skipping schema application.")
+
+        try:
+            _migrate_activity_deadline_column(cursor, conn)
+        except Exception as e:
+            conn.rollback()
+            print(f"Error applying migrations: {e}")
+            raise e
             
         cursor.close()
         conn.close()

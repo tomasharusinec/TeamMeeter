@@ -1,3 +1,5 @@
+import 'dart:io';
+
 class Activity {
   final int idActivity;
   final String name;
@@ -30,5 +32,32 @@ class Activity {
       groupName: json['group_name'],
       creatorUsername: json['creator_username'],
     );
+  }
+
+  DateTime? get parsedDeadline => parseFlexibleDate(deadline);
+
+  String get formattedDeadline {
+    final dt = parsedDeadline;
+    if (dt == null) return deadline ?? '';
+    final datePart =
+        '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+    final hasTime = dt.hour != 0 || dt.minute != 0;
+    if (!hasTime) return datePart;
+    final timePart =
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return '$datePart $timePart';
+  }
+
+  static DateTime? parseFlexibleDate(String? rawDate) {
+    if (rawDate == null || rawDate.trim().isEmpty) return null;
+    try {
+      return DateTime.parse(rawDate).toLocal();
+    } catch (_) {
+      try {
+        return HttpDate.parse(rawDate).toLocal();
+      } catch (_) {
+        return null;
+      }
+    }
   }
 }

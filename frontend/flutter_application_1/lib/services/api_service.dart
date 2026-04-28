@@ -4,9 +4,10 @@ import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/group.dart';
 import '../models/activity.dart';
+import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.229.79.149:5000';
+  static const String baseUrl = 'http://10.185.219.201:5000';
 
   String? _token;
 
@@ -158,6 +159,66 @@ class ApiService {
     throw _buildApiException(response, 'Nepodarilo sa načítať roly');
   }
 
+  Future<List<Role>> getGroupRolesModel(int groupId) async {
+    final roles = await getGroupRoles(groupId);
+    return roles.map((role) => Role.fromJson(role)).toList();
+  }
+
+  Future<Map<String, dynamic>> createGroupActivity({
+    required int groupId,
+    required String name,
+    String? description,
+    String? deadline,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/activities/groups/$groupId'),
+      headers: _headers,
+      body: jsonEncode({
+        'name': name,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        if (deadline != null) 'deadline': deadline,
+      }),
+    );
+    if (response.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(response.body));
+    }
+    throw _buildApiException(response, 'Nepodarilo sa vytvoriť aktivitu skupiny');
+  }
+
+  Future<Map<String, dynamic>> createIndividualActivity({
+    required String name,
+    String? description,
+    String? deadline,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/activities/individual'),
+      headers: _headers,
+      body: jsonEncode({
+        'name': name,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        if (deadline != null) 'deadline': deadline,
+      }),
+    );
+    if (response.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(response.body));
+    }
+    throw _buildApiException(
+        response, 'Nepodarilo sa vytvoriť individuálnu aktivitu');
+  }
+
+  Future<void> assignActivityRole(int activityId, int roleId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/activities/$activityId/roles'),
+      headers: _headers,
+      body: jsonEncode({'role_id': roleId}),
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa priradiť rolu aktivite');
+    }
+  }
+
   Future<Map<String, dynamic>> getConversation(int conversationId) async {
     final response = await http.get(
       Uri.parse('$baseUrl/conversations/$conversationId'),
@@ -239,7 +300,29 @@ class ApiService {
           .map((a) => Activity.fromJson(a))
           .toList();
     }
-    return [];
+    throw _buildApiException(response, 'Nepodarilo sa načítať aktivity');
+  }
+
+  Future<Activity> getActivityDetails(int activityId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/activities/$activityId'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return Activity.fromJson(Map<String, dynamic>.from(data['activity']));
+    }
+    throw _buildApiException(response, 'Nepodarilo sa načítať detail aktivity');
+  }
+
+  Future<void> deleteActivity(int activityId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/activities/$activityId'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa zmazať aktivitu');
+    }
   }
 
   Future<Map<String, dynamic>> createGroup(String name) async {

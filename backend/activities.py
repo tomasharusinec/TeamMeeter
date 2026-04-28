@@ -5,7 +5,7 @@ from psycopg2.extras import RealDictCursor
 from flask import Blueprint
 from datetime import datetime
 from websocket_handler import create_activity_notification, get_db_connection
-from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml
+from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml, parse_client_deadline
 
 activities_blueprint = Blueprint('activities', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -30,13 +30,12 @@ def create_individual_activity():
     except:
         return {"message": "Invalid format!"}, 400
 
+    deadline_date = None
     if deadline_str:
         try:
-            deadline_date = datetime.fromisoformat(deadline_str)
-
-            if deadline_date < datetime.now():
+            deadline_date = parse_client_deadline(deadline_str)
+            if deadline_date < datetime.now(deadline_date.tzinfo):
                 return {"message": "This date is invalid!"}, 400
-
         except ValueError:
             return {"message": "Invalid date format!"}, 400
 
@@ -45,7 +44,7 @@ def create_individual_activity():
             INSERT INTO activity (name, description, deadline, creator_id, group_id)
             VALUES (%s, %s, %s, %s, NULL)
             RETURNING id_activity
-        """, (name, description, deadline_str, current_user_id))
+        """, (name, description, deadline_date, current_user_id))
         activity_id = cursor.fetchone()["id_activity"]
         db.commit()
     except:
@@ -100,13 +99,12 @@ def create_activity(group_id):
     except:
         return {"message": "Invalid format!"}, 400
 
+    deadline_date = None
     if deadline_str:
         try:
-            deadline_date = datetime.fromisoformat(deadline_str)
-
-            if deadline_date < datetime.now():
+            deadline_date = parse_client_deadline(deadline_str)
+            if deadline_date < datetime.now(deadline_date.tzinfo):
                 return {"message": "This date is invalid!"}, 400
-
         except ValueError:
             return {"message": "Invalid date format!"}, 400
 
@@ -115,7 +113,7 @@ def create_activity(group_id):
             INSERT INTO activity (name, description, deadline, creator_id, group_id)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id_activity
-        """, (name, description, deadline_str, current_user_id, group_id))
+        """, (name, description, deadline_date, current_user_id, group_id))
         activity_id = cursor.fetchone()["id_activity"]
         db.commit()
     except:
@@ -201,13 +199,12 @@ def update_activity(activity_id):
     except:
         return {"message": "Invalid format!"}, 400
 
+    deadline_date = None
     if deadline_str:
         try:
-            deadline_date = datetime.fromisoformat(deadline_str)
-
-            if deadline_date < datetime.now():
+            deadline_date = parse_client_deadline(deadline_str)
+            if deadline_date < datetime.now(deadline_date.tzinfo):
                 return {"message": "This date is invalid!"}, 400
-
         except ValueError:
             return {"message": "Invalid date format!"}, 400
 
@@ -218,7 +215,7 @@ def update_activity(activity_id):
                 description = COALESCE(%s, description),
                 deadline = COALESCE(%s, deadline)
             WHERE id_activity = %s
-        """, (name, description, deadline_str, activity_id))
+        """, (name, description, deadline_date, activity_id))
         db.commit()
     except:
         db.rollback()

@@ -80,7 +80,7 @@ CREATE TABLE activity (
     name VARCHAR(50) NOT NULL,
     description TEXT,
     creation_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    deadline DATE,
+    deadline TIMESTAMPTZ,
     creator_id INT NOT NULL,
     group_id INT,
     CONSTRAINT fk_activity_creator FOREIGN KEY (creator_id) REFERENCES "user"(id_registration),

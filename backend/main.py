@@ -16,6 +16,7 @@ from flask_jwt_extended import JWTManager
 from flasgger import Swagger
 from websocket_handler import sock
 from sync import sync_blueprint
+from datetime import timedelta
 
 app = Flask(__name__)
 CORS(app)
@@ -49,6 +50,7 @@ app.config['SWAGGER'] = {
 
 swagger = Swagger(app, template=template)
 app.config['JWT_SECRET_KEY'] = os.getenv("JWT_SECRET_KEY")
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=30)
 jwt = JWTManager(app)
 
 # Function below was generated using AI (Gemini)
