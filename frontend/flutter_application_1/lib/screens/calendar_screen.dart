@@ -140,6 +140,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   /// Get activities for a specific day
   List<Activity> _getActivitiesForDay(DateTime day) {
     return _activities.where((a) {
+      if (a.status == 'completed') return false;
       final deadline = a.parsedDeadline;
       if (deadline == null) return false;
       return deadline.year == day.year &&

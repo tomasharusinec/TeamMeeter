@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import 'group_basic_information_screen.dart';
 import 'group_members_screen.dart';
+import 'group_roles_screen.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   final Group group;
@@ -279,10 +280,28 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 _OptionButton(
                   text: 'Roles',
                   icon: Icons.security_outlined,
-                  onPressed: () => _openIfAuthorized(
-                    title: 'Roles',
-                    accessCheck: () => api.getGroupRoles(widget.group.idGroup),
-                  ),
+                  onPressed: () async {
+                    try {
+                      await api.getGroupRoles(widget.group.idGroup);
+                      if (!mounted) return;
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => GroupRolesScreen(
+                            groupId: widget.group.idGroup,
+                            groupName: shownGroup.name,
+                          ),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(e.toString().replaceAll('Exception: ', '')),
+                          backgroundColor: const Color(0xFF8B1A2C),
+                        ),
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 10),
                 _OptionButton(

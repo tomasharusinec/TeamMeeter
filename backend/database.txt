@@ -81,6 +81,7 @@ CREATE TABLE activity (
     description TEXT,
     creation_date DATE NOT NULL DEFAULT CURRENT_DATE,
     deadline TIMESTAMPTZ,
+    status VARCHAR(20) NOT NULL DEFAULT 'todo',
     creator_id INT NOT NULL,
     group_id INT,
     CONSTRAINT fk_activity_creator FOREIGN KEY (creator_id) REFERENCES "user"(id_registration),

@@ -20,7 +20,20 @@ def get_roles(group_id):
         return {"message": "You are not a member of this group!"}, 403
 
     cursor.execute("""
-        SELECT id_role, name, color FROM role WHERE group_id = %s
+        SELECT
+            r.id_role,
+            r.name,
+            r.color,
+            COALESCE(
+                ARRAY_AGG(p.name) FILTER (WHERE rp.value = TRUE),
+                ARRAY[]::varchar[]
+            ) AS permissions
+        FROM role r
+        LEFT JOIN role_permission rp ON rp.role_id = r.id_role
+        LEFT JOIN permission p ON p.id_permission = rp.permission_id
+        WHERE r.group_id = %s
+        GROUP BY r.id_role, r.name, r.color
+        ORDER BY r.name
     """, (group_id,))
     roles = cursor.fetchall()
     return {"message": "Success", "roles": roles}, 200

@@ -164,6 +164,93 @@ class ApiService {
     return roles.map((role) => Role.fromJson(role)).toList();
   }
 
+  Future<Map<String, dynamic>> createGroupRole({
+    required int groupId,
+    required String name,
+    String? color,
+    List<String> permissions = const [],
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/roles/groups/$groupId'),
+      headers: _headers,
+      body: jsonEncode({
+        'name': name,
+        if (color != null && color.isNotEmpty) 'color': color,
+        'permissions': permissions,
+      }),
+    );
+    if (response.statusCode == 201) {
+      return Map<String, dynamic>.from(jsonDecode(response.body));
+    }
+    throw _buildApiException(response, 'Nepodarilo sa vytvoriť rolu');
+  }
+
+  Future<void> updateGroupRole({
+    required int groupId,
+    required int roleId,
+    String? name,
+    String? color,
+    List<String>? permissions,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/roles/groups/$groupId/$roleId'),
+      headers: _headers,
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (color != null) 'color': color,
+        if (permissions != null) 'permissions': permissions,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa upraviť rolu');
+    }
+  }
+
+  Future<void> deleteGroupRole({
+    required int groupId,
+    required int roleId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/roles/groups/$groupId/roles/$roleId'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa zmazať rolu');
+    }
+  }
+
+  Future<void> assignUserRole({
+    required int groupId,
+    required String username,
+    required int roleId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/roles/groups/$groupId/assign'),
+      headers: _headers,
+      body: jsonEncode({
+        'username': username,
+        'role_id': roleId,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa priradiť rolu používateľovi');
+    }
+  }
+
+  Future<void> removeUserRole({
+    required int groupId,
+    required int userId,
+    required int roleId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/roles/groups/$groupId/users/$userId/roles/$roleId'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa odobrať rolu používateľovi');
+    }
+  }
+
   Future<Map<String, dynamic>> createGroupActivity({
     required int groupId,
     required String name,
@@ -322,6 +409,17 @@ class ApiService {
     );
     if (response.statusCode != 200) {
       throw _buildApiException(response, 'Nepodarilo sa zmazať aktivitu');
+    }
+  }
+
+  Future<void> updateActivityStatus(int activityId, String status) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/activities/$activityId'),
+      headers: _headers,
+      body: jsonEncode({'status': status}),
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa upraviť status aktivity');
     }
   }
 

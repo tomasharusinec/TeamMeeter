@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Group> _groups = [];
   bool _isLoading = true;
   bool _isGroupsLoading = false;
+  bool _isUpdatingActivityStatus = false;
 
   @override
   void initState() {
@@ -197,6 +198,13 @@ class _HomeScreenState extends State<HomeScreen> {
           child: CircularProgressIndicator(color: Colors.white));
     }
 
+    final todoActivities =
+        _activities.where((a) => a.status == 'todo').toList();
+    final inProgressActivities =
+        _activities.where((a) => a.status == 'in_progress').toList();
+    final completedActivities =
+        _activities.where((a) => a.status == 'completed').toList();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(
@@ -205,9 +213,21 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _buildTaskColumn('To-do', _activities)),
+                Expanded(
+                  child: _buildTaskColumn(
+                    title: 'To-do',
+                    columnStatus: 'todo',
+                    activities: todoActivities,
+                  ),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: _buildTaskColumn('In progress', <Activity>[])),
+                Expanded(
+                  child: _buildTaskColumn(
+                    title: 'In progress',
+                    columnStatus: 'in_progress',
+                    activities: inProgressActivities,
+                  ),
+                ),
               ],
             ),
           ),
@@ -216,7 +236,9 @@ class _HomeScreenState extends State<HomeScreen> {
             width: double.infinity,
             height: 44,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: completedActivities.isEmpty
+                  ? null
+                  : () => _showCompletedTasksDialog(completedActivities),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2D1515),
                 foregroundColor: Colors.white70,
@@ -235,107 +257,148 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTaskColumn(String title, List<Activity> activities) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A0A0A).withAlpha(204),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withAlpha(13)),
-      ),
-      child: Column(
-        children: [
-          // Column header
-          Container(
-            width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2D1515),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-              border: Border.all(color: Colors.white.withAlpha(13)),
-            ),
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+  Widget _buildTaskColumn({
+    required String title,
+    required String columnStatus,
+    required List<Activity> activities,
+  }) {
+    return DragTarget<Activity>(
+      onWillAccept: (data) {
+        if (data == null) return false;
+        return data.status != columnStatus;
+      },
+      onAccept: (activity) async {
+        if (_isUpdatingActivityStatus) return;
+        await _setActivityStatus(activity.idActivity, columnStatus);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isActiveDrop = candidateData.isNotEmpty;
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A0A0A).withAlpha(204),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isActiveDrop
+                  ? const Color(0xFFE57373).withAlpha(120)
+                  : Colors.white.withAlpha(13),
+              width: isActiveDrop ? 1.5 : 1,
             ),
           ),
-          // Task items
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: activities.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      title == 'To-do'
-                          ? 'No tasks yet'
-                          : 'No tasks in progress',
-                      style: const TextStyle(
-                          color: Colors.white38, fontSize: 12),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : Column(
-                    children: activities
-                        .map((a) => _buildTaskItem(a))
-                        .toList(),
+          child: Column(
+            children: [
+              // Column header
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2D1515),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
                   ),
+                  border: Border.all(color: Colors.white.withAlpha(13)),
+                ),
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              // Task items
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: activities.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          title == 'To-do'
+                              ? 'No tasks yet'
+                              : 'No tasks in progress',
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                    : Column(
+                        children: activities
+                            .map((a) => _buildTaskItem(a))
+                            .toList(),
+                      ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildTaskItem(Activity activity) {
-    return GestureDetector(
-      onTap: () => _showActivityDetail(activity),
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F0F0),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(38),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
-            ),
-          ],
+    return Draggable<Activity>(
+      data: activity,
+      axis: Axis.vertical,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Opacity(
+          opacity: 0.85,
+          child: _buildTaskCard(activity),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.4,
+        child: _buildTaskCard(activity),
+      ),
+      child: GestureDetector(
+        onTap: () => _showActivityDetail(activity),
+        child: _buildTaskCard(activity),
+      ),
+    );
+  }
+
+  Widget _buildTaskCard(Activity activity) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F0F0),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(38),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            activity.name,
+            style: const TextStyle(
+              color: Color(0xFF333333),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (activity.deadline != null) ...[
+            const SizedBox(height: 2),
             Text(
-              activity.name,
+              activity.formattedDeadline,
               style: const TextStyle(
-                color: Color(0xFF333333),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+                color: Color(0xFF888888),
+                fontSize: 10,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-            if (activity.deadline != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                activity.formattedDeadline,
-                style: const TextStyle(
-                  color: Color(0xFF888888),
-                  fontSize: 10,
-                ),
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -346,6 +409,92 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => ActivityDetailDialog(
         activity: activity,
         onDeleted: _loadData,
+      ),
+    );
+  }
+
+  Future<void> _setActivityStatus(int activityId, String newStatus) async {
+    setState(() => _isUpdatingActivityStatus = true);
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      await api.updateActivityStatus(activityId, newStatus);
+      await _loadActivities(showError: false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdatingActivityStatus = false);
+    }
+  }
+
+  void _showCompletedTasksDialog(List<Activity> completedActivities) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF1A0A0A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SizedBox(
+              width: double.infinity,
+              height: 520,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Completed tasks',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: completedActivities.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No completed tasks',
+                              style: TextStyle(color: Colors.white60),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: completedActivities.length,
+                            itemBuilder: (context, index) {
+                              final activity = completedActivities[index];
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  _showActivityDetail(activity);
+                                },
+                                child: _buildTaskCard(activity),
+                              );
+                            },
+                          ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.white.withAlpha(60)),
+                        foregroundColor: Colors.white70,
+                      ),
+                      child: const Text('Close'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

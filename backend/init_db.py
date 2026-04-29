@@ -30,6 +30,34 @@ def _migrate_activity_deadline_column(cursor, conn):
     conn.commit()
     print("Migration finished: activity.deadline is TIMESTAMPTZ.")
 
+
+def _migrate_activity_status_column(cursor, conn):
+    cursor.execute("""
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'activity'
+          AND column_name = 'status'
+    """)
+    row = cursor.fetchone()
+    if row is not None:
+        # Column exists; still make sure no NULLs remain.
+        cursor.execute("""
+            UPDATE activity
+            SET status = 'todo'
+            WHERE status IS NULL
+        """)
+        conn.commit()
+        return
+
+    print("Adding activity.status column with default 'todo'.")
+    cursor.execute("""
+        ALTER TABLE activity
+        ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'todo'
+    """)
+    conn.commit()
+    print("Migration finished: activity.status added.")
+
 # This function was generated using AI (Gemini) with slight manual refinements
 def init_db():
     """
@@ -108,6 +136,7 @@ def init_db():
 
         try:
             _migrate_activity_deadline_column(cursor, conn)
+            _migrate_activity_status_column(cursor, conn)
         except Exception as e:
             conn.rollback()
             print(f"Error applying migrations: {e}")

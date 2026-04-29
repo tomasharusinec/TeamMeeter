@@ -21,6 +21,7 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
   late Activity _activity;
   bool _isLoading = true;
   bool _isDeleting = false;
+  bool _isMarkingCompleted = false;
 
   @override
   void initState() {
@@ -105,6 +106,34 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
     }
   }
 
+  Future<void> _markAsCompleted() async {
+    setState(() => _isMarkingCompleted = true);
+    try {
+      final api =
+          Provider.of<AuthProvider>(context, listen: false).apiService;
+      await api.updateActivityStatus(_activity.idActivity, 'completed');
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      widget.onDeleted?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aktivita bola označená ako vybavená'),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isMarkingCompleted = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -135,33 +164,40 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
                   _detailRow('Termín', _activity.formattedDeadline.isEmpty
                       ? 'Bez termínu'
                       : _activity.formattedDeadline),
+                  _detailRow('Stav', () {
+                    final s = _activity.status;
+                    if (s == 'todo') return 'To-do';
+                    if (s == 'in_progress') return 'In progress';
+                    if (s == 'completed') return 'Vybavené';
+                    return s;
+                  }()),
                   _detailRow('Typ', _activity.groupId == null ? 'Individuálna' : 'Skupinová'),
                   _detailRow('Skupina', _activity.groupName ?? '-'),
                   _detailRow('Vytvoril', _activity.creatorUsername ?? '-'),
                   _detailRow('Popis',
                       (_activity.description?.trim().isNotEmpty ?? false) ? _activity.description! : '-'),
                   const SizedBox(height: 18),
-                  Row(
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
                     children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Colors.white.withAlpha(60)),
-                            foregroundColor: Colors.white70,
-                          ),
-                          child: const Text('Close'),
+                      OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: Colors.white.withAlpha(60)),
+                          foregroundColor: Colors.white70,
                         ),
+                        child: const Text('Close'),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _isDeleting ? null : _deleteActivity,
+                      if (_activity.status != 'completed')
+                        ElevatedButton(
+                          onPressed:
+                              _isMarkingCompleted ? null : _markAsCompleted,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8B1A2C),
+                            backgroundColor: const Color(0xFF2E7D32),
                             foregroundColor: Colors.white,
                           ),
-                          child: _isDeleting
+                          child: _isMarkingCompleted
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
@@ -170,8 +206,24 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Text('Delete'),
+                              : const Text('Mark as done'),
                         ),
+                      ElevatedButton(
+                        onPressed: _isDeleting ? null : _deleteActivity,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8B1A2C),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: _isDeleting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Delete'),
                       ),
                     ],
                   ),

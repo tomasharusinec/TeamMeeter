@@ -41,8 +41,8 @@ def create_individual_activity():
 
     try:
         cursor.execute("""
-            INSERT INTO activity (name, description, deadline, creator_id, group_id)
-            VALUES (%s, %s, %s, %s, NULL)
+            INSERT INTO activity (name, description, deadline, status, creator_id, group_id)
+            VALUES (%s, %s, %s, 'todo', %s, NULL)
             RETURNING id_activity
         """, (name, description, deadline_date, current_user_id))
         activity_id = cursor.fetchone()["id_activity"]
@@ -69,7 +69,7 @@ def get_activities(group_id):
         return {"message": "You don't have permission to view activities!"}, 403
 
     cursor.execute("""
-        SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.creator_id, u.username AS creator_username
+        SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.status, a.creator_id, u.username AS creator_username
         FROM activity a
         JOIN "user" u ON a.creator_id = u.id_registration
         WHERE a.group_id = %s
@@ -110,8 +110,8 @@ def create_activity(group_id):
 
     try:
         cursor.execute("""
-            INSERT INTO activity (name, description, deadline, creator_id, group_id)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO activity (name, description, deadline, status, creator_id, group_id)
+            VALUES (%s, %s, %s, 'todo', %s, %s)
             RETURNING id_activity
         """, (name, description, deadline_date, current_user_id, group_id))
         activity_id = cursor.fetchone()["id_activity"]
@@ -157,7 +157,7 @@ def get_activity(activity_id):
             return {"message": "You don't have permission to view activities!"}, 403
 
     cursor.execute("""
-        SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.creator_id, a.group_id, u.username AS creator_username
+        SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.status, a.creator_id, a.group_id, u.username AS creator_username
         FROM activity a
         JOIN "user" u ON a.creator_id = u.id_registration
         WHERE a.id_activity = %s
@@ -189,15 +189,71 @@ def update_activity(activity_id):
             return {"message": "You are not a member of this group!"}, 403
 
         is_creator = (current_user_id == creator_id)
-        if not is_creator and not check_permission(current_user_id, group_id, "edit_activity"):
-            return {"message": "You don't have permission to edit this activity!"}, 403
+        if not is_creator:
+            # Drag/drop + "mark as done" send only status in PUT body.
+            # In that case, allow status updates for assigned users/roles
+            # even without edit_activity permission.
+            try:
+                name_tmp = request.json.get("name")
+                description_tmp = request.json.get("description")
+                deadline_str_tmp = request.json.get("deadline")
+                status_tmp = request.json.get("status")
+                is_status_only_update = (
+                    status_tmp is not None
+                    and name_tmp is None
+                    and description_tmp is None
+                    and deadline_str_tmp is None
+                )
+            except Exception:
+                is_status_only_update = False
+
+            if is_status_only_update:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM activity_user au
+                    WHERE au.id_activity = %s AND au.id_user = %s
+                    LIMIT 1
+                    """,
+                    (activity_id, current_user_id),
+                )
+                assigned_by_user = cursor.fetchone() is not None
+
+                assigned_by_role = False
+                if not assigned_by_user:
+                    cursor.execute(
+                        """
+                        SELECT 1
+                        FROM activity_role ar
+                        JOIN user_role ur ON ar.role_id = ur.role_id
+                        WHERE ar.activity_id = %s AND ur.user_id = %s
+                        LIMIT 1
+                        """,
+                        (activity_id, current_user_id),
+                    )
+                    assigned_by_role = cursor.fetchone() is not None
+
+                if not (assigned_by_user or assigned_by_role):
+                    return {"message": "You don't have permission to update this activity status!"}, 403
+            else:
+                if not check_permission(current_user_id, group_id, "edit_activity"):
+                    return {"message": "You don't have permission to edit this activity!"}, 403
 
     try:
         name = request.json.get("name")
         description = request.json.get("description")
         deadline_str = request.json.get("deadline")
+        status = request.json.get("status")
     except:
         return {"message": "Invalid format!"}, 400
+
+    allowed_statuses = {'todo', 'in_progress', 'completed'}
+    if status is not None:
+        if str(status) not in allowed_statuses:
+            return {"message": "Invalid status!"}, 400
+        status = str(status)
+    else:
+        status = None
 
     deadline_date = None
     if deadline_str:
@@ -213,9 +269,10 @@ def update_activity(activity_id):
             UPDATE activity SET
                 name = COALESCE(%s, name),
                 description = COALESCE(%s, description),
-                deadline = COALESCE(%s, deadline)
+                deadline = COALESCE(%s, deadline),
+                status = COALESCE(%s, status)
             WHERE id_activity = %s
-        """, (name, description, deadline_date, activity_id))
+        """, (name, description, deadline_date, status, activity_id))
         db.commit()
     except:
         db.rollback()
@@ -510,7 +567,7 @@ def get_my_activities():
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-        SELECT DISTINCT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.group_id, g.name AS group_name, u_creator.username AS creator_username
+        SELECT DISTINCT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.status, a.group_id, g.name AS group_name, u_creator.username AS creator_username
         FROM activity a
         LEFT JOIN "group" g ON a.group_id = g.id_group
         JOIN "user" u_creator ON a.creator_id = u_creator.id_registration
