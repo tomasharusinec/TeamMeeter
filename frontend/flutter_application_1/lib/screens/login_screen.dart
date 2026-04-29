@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../theme/app_colors.dart';
 import '../providers/auth_provider.dart';
 import 'register_screen.dart';
 
@@ -70,18 +71,15 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    final gradientColors = AppColors.screenGradient(context);
+    final textColor = AppColors.textPrimary(context);
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0D0D0D),
-              Color(0xFF1A0A0A),
-              Color(0xFF3D0C0C),
-              Color(0xFF6B1A1A),
-            ],
+            colors: gradientColors,
             stops: [0.0, 0.3, 0.7, 1.0],
           ),
         ),
@@ -102,20 +100,20 @@ class _LoginScreenState extends State<LoginScreen>
                           // Logo
                           const TeamMeeterLogo(),
                           const SizedBox(height: 12),
-                          const Text(
+                          Text(
                             'TeamMeeter',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: textColor,
                               fontSize: 24,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 1.2,
                             ),
                           ),
                           const SizedBox(height: 40),
-                          const Text(
+                          Text(
                             'Sign in',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: textColor,
                               fontSize: 20,
                               fontWeight: FontWeight.w500,
                             ),

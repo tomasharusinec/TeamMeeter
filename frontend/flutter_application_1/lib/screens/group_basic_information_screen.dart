@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../models/group.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/permission_service.dart';
+import '../theme/app_colors.dart';
 
 class GroupBasicInformationScreen extends StatefulWidget {
   final int groupId;
@@ -20,6 +22,7 @@ class _GroupBasicInformationScreenState
     extends State<GroupBasicInformationScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _capacityController = TextEditingController();
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -35,6 +38,7 @@ class _GroupBasicInformationScreenState
   @override
   void dispose() {
     _nameController.dispose();
+    _capacityController.dispose();
     super.dispose();
   }
 
@@ -47,6 +51,7 @@ class _GroupBasicInformationScreenState
       setState(() {
         _group = group;
         _nameController.text = group.name;
+        _capacityController.text = group.capacity.toString();
       });
     } catch (e) {
       if (!mounted) return;
@@ -69,6 +74,7 @@ class _GroupBasicInformationScreenState
       await api.updateGroup(
         groupId: _group!.idGroup,
         name: _nameController.text.trim(),
+        capacity: int.parse(_capacityController.text.trim()),
       );
       if (!mounted) return;
       await _load();
@@ -98,6 +104,18 @@ class _GroupBasicInformationScreenState
 
   Future<void> _pickAndUploadIcon() async {
     if (_group == null) return;
+    final hasPermission = await PermissionService.ensureGalleryPermission();
+    if (!hasPermission) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Povoľ prístup ku galérii v nastaveniach aplikácie.'),
+          backgroundColor: Color(0xFF8B1A2C),
+        ),
+      );
+      return;
+    }
+
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
@@ -165,19 +183,14 @@ class _GroupBasicInformationScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Basic information'),
-        backgroundColor: const Color(0xFF1A0A0A),
+        backgroundColor: AppColors.dialogBackground(context),
       ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF8B1A2C),
-              Color(0xFF3D0C0C),
-              Color(0xFF1A0A0A),
-              Color(0xFF0D0D0D),
-            ],
+            colors: AppColors.screenGradient(context),
             stops: [0.0, 0.25, 0.55, 1.0],
           ),
         ),
@@ -302,6 +315,11 @@ class _GroupBasicInformationScreenState
                                     label: 'Conversation ID',
                                     value: _group!.conversationId?.toString() ?? '-',
                                   ),
+                                  const SizedBox(height: 10),
+                                  _InfoTile(
+                                    label: 'Current capacity',
+                                    value: _group!.capacity.toString(),
+                                  ),
                                   const SizedBox(height: 18),
                                   TextFormField(
                                     controller: _nameController,
@@ -330,6 +348,42 @@ class _GroupBasicInformationScreenState
                                       if (value == null ||
                                           value.trim().isEmpty) {
                                         return 'Name is required';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextFormField(
+                                    controller: _capacityController,
+                                    keyboardType: TextInputType.number,
+                                    style: const TextStyle(color: Colors.white),
+                                    decoration: InputDecoration(
+                                      labelText: 'Group capacity',
+                                      labelStyle:
+                                          const TextStyle(color: Colors.white70),
+                                      filled: true,
+                                      fillColor: const Color(0xFF2A1111),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                            color: Colors.white.withAlpha(26)),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: const BorderSide(
+                                            color: Color(0xFF8B1A2C)),
+                                      ),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.trim().isEmpty) {
+                                        return 'Capacity is required';
+                                      }
+                                      final parsed = int.tryParse(value.trim());
+                                      if (parsed == null || parsed < 1) {
+                                        return 'Capacity must be a number greater than 0';
                                       }
                                       return null;
                                     },

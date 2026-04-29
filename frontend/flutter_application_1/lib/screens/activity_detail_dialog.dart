@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/activity.dart';
 import '../providers/auth_provider.dart';
+import '../theme/app_colors.dart';
 
 class ActivityDetailDialog extends StatefulWidget {
   final Activity activity;
@@ -50,19 +51,22 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A0A0A),
-        title: const Text(
+        backgroundColor: AppColors.dialogBackground(context),
+        title: Text(
           'Delete activity',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.textPrimary(context)),
         ),
-        content: const Text(
+        content: Text(
           'Naozaj chcete túto aktivitu vymazať?',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppColors.textSecondary(context)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary(context)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
@@ -136,8 +140,9 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final textPrimary = AppColors.textPrimary(context);
     return Dialog(
-      backgroundColor: const Color(0xFF1A0A0A),
+      backgroundColor: AppColors.dialogBackground(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -154,8 +159,8 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
                 children: [
                   Text(
                     _activity.name,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: textPrimary,
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
                     ),
@@ -234,16 +239,18 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
   }
 
   Widget _detailRow(String label, String value) {
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: RichText(
         text: TextSpan(
-          style: const TextStyle(color: Colors.white70, fontSize: 14),
+          style: TextStyle(color: textSecondary, fontSize: 14),
           children: [
             TextSpan(
               text: '$label: ',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: textPrimary,
                 fontWeight: FontWeight.w600,
               ),
             ),

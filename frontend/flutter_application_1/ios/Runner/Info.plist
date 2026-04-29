@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Aplikácia potrebuje prístup ku galérii pre výber profilovej fotky.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Aplikácia potrebuje kameru na skenovanie QR kódov pre pripojenie do skupiny.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

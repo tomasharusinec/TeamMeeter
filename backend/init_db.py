@@ -58,6 +58,36 @@ def _migrate_activity_status_column(cursor, conn):
     conn.commit()
     print("Migration finished: activity.status added.")
 
+def _migrate_group_capacity_column(cursor, conn):
+    cursor.execute("""
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'group'
+          AND column_name = 'capacity'
+    """)
+    row = cursor.fetchone()
+    if row is not None:
+        cursor.execute("""
+            UPDATE "group"
+            SET capacity = 10
+            WHERE capacity IS NULL OR capacity < 1
+        """)
+        conn.commit()
+        return
+
+    print('Adding "group".capacity column with default 10.')
+    cursor.execute("""
+        ALTER TABLE "group"
+        ADD COLUMN capacity INTEGER NOT NULL DEFAULT 10
+    """)
+    cursor.execute("""
+        ALTER TABLE "group"
+        ADD CONSTRAINT group_capacity_positive CHECK (capacity > 0)
+    """)
+    conn.commit()
+    print('Migration finished: "group".capacity added.')
+
 # This function was generated using AI (Gemini) with slight manual refinements
 def init_db():
     """
@@ -137,6 +167,7 @@ def init_db():
         try:
             _migrate_activity_deadline_column(cursor, conn)
             _migrate_activity_status_column(cursor, conn)
+            _migrate_group_capacity_column(cursor, conn)
         except Exception as e:
             conn.rollback()
             print(f"Error applying migrations: {e}")

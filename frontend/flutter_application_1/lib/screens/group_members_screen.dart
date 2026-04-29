@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../theme/app_colors.dart';
 
 class GroupMembersScreen extends StatefulWidget {
   final int groupId;
@@ -92,16 +93,22 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A0A0A),
-        title: const Text('Remove member', style: TextStyle(color: Colors.white)),
+        backgroundColor: AppColors.dialogBackground(context),
+        title: Text(
+          'Remove member',
+          style: TextStyle(color: AppColors.textPrimary(context)),
+        ),
         content: Text(
           'Remove ${_memberDisplayName(member)} from group?',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppColors.textSecondary(context)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary(context)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -170,19 +177,14 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Members'),
-        backgroundColor: const Color(0xFF1A0A0A),
+        backgroundColor: AppColors.dialogBackground(context),
       ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF8B1A2C),
-              Color(0xFF3D0C0C),
-              Color(0xFF1A0A0A),
-              Color(0xFF0D0D0D),
-            ],
+            colors: AppColors.screenGradient(context),
             stops: [0.0, 0.25, 0.55, 1.0],
           ),
         ),

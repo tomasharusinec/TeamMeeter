@@ -7,7 +7,7 @@ import '../models/activity.dart';
 import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.185.219.201:5000';
+  static const String baseUrl = 'http://192.168.1.123:5000';
 
   String? _token;
 
@@ -82,6 +82,41 @@ class ApiService {
       return User.fromJson(jsonDecode(response.body)['user']);
     }
     return null;
+  }
+
+  Future<void> uploadMyProfilePicture({required File imageFile}) async {
+    final request = http.MultipartRequest(
+      'PUT',
+      Uri.parse('$baseUrl/users/me/profile-picture'),
+    );
+    if (_token != null) {
+      request.headers['Authorization'] = 'Bearer $_token';
+    }
+    request.files.add(
+      await http.MultipartFile.fromPath('image', imageFile.path),
+    );
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    if (response.statusCode != 200) {
+      throw _buildApiException(
+        response,
+        'Nepodarilo sa nahrať profilovú fotku',
+      );
+    }
+  }
+
+  Future<void> deleteMyProfilePicture() async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/users/me/profile-picture'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(
+        response,
+        'Nepodarilo sa odstrániť profilovú fotku',
+      );
+    }
   }
 
   Future<List<Group>> getGroups() async {
@@ -331,12 +366,14 @@ class ApiService {
   Future<void> updateGroup({
     required int groupId,
     String? name,
+    int? capacity,
   }) async {
     final response = await http.put(
       Uri.parse('$baseUrl/groups/$groupId'),
       headers: _headers,
       body: jsonEncode({
         if (name != null) 'name': name,
+        if (capacity != null) 'capacity': capacity,
       }),
     );
     if (response.statusCode != 200) {
@@ -423,16 +460,83 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> createGroup(String name) async {
+  Future<Map<String, dynamic>> createGroup(
+    String name, {
+    int capacity = 10,
+    bool generateQr = false,
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/groups/'),
       headers: _headers,
-      body: jsonEncode({'name': name}),
+      body: jsonEncode({
+        'name': name,
+        'capacity': capacity,
+        'generate_qr': generateQr,
+      }),
     );
     if (response.statusCode == 201) {
       return jsonDecode(response.body);
     }
     throw _buildApiException(response, 'Nepodarilo sa vytvoriť skupinu');
+  }
+
+  Future<void> joinGroupByInviteCode(String inviteCode) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/groups/join'),
+      headers: _headers,
+      body: jsonEncode({'invite_code': inviteCode}),
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa pripojiť do skupiny');
+    }
+  }
+
+  Future<String?> getGroupInviteCode(int groupId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/groups/$groupId/invite'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final data = Map<String, dynamic>.from(jsonDecode(response.body));
+      return data['qr_code']?.toString();
+    }
+    if (response.statusCode == 404) {
+      throw Exception('Invite API is not available. Restart backend server.');
+    }
+    throw _buildApiException(response, 'Nepodarilo sa načítať invite kód');
+  }
+
+  Future<String> enableGroupInviteCode(int groupId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/groups/$groupId/invite'),
+      headers: _headers,
+      body: jsonEncode({}),
+    );
+    if (response.statusCode == 200) {
+      final data = Map<String, dynamic>.from(jsonDecode(response.body));
+      final code = data['qr_code']?.toString();
+      if (code == null || code.isEmpty) {
+        throw Exception('Invite code was not returned by server');
+      }
+      return code;
+    }
+    if (response.statusCode == 404) {
+      throw Exception('Invite API is not available. Restart backend server.');
+    }
+    throw _buildApiException(response, 'Nepodarilo sa zapnúť invite kód');
+  }
+
+  Future<void> disableGroupInviteCode(int groupId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/groups/$groupId/invite'),
+      headers: _headers,
+    );
+    if (response.statusCode == 404) {
+      throw Exception('Invite API is not available. Restart backend server.');
+    }
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa vypnúť invite kód');
+    }
   }
 
   Future<List<Map<String, dynamic>>> getNotifications() async {

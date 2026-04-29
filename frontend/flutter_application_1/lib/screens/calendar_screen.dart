@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../theme/app_colors.dart';
 import '../models/activity.dart';
 import '../models/group.dart';
 import 'activity_detail_dialog.dart';
@@ -251,10 +252,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required int weekNumber,
     required String monthLabel,
   }) {
+    final isDarkMode = AppColors.isDark(context);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A0A0A).withAlpha(128),
+                color: (isDarkMode ? const Color(0xFF1A0A0A) : Colors.white)
+                    .withAlpha(128),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withAlpha(13)),
       ),
@@ -271,14 +274,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2D1515),
+                  color: isDarkMode ? const Color(0xFF2D1515) : Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white.withAlpha(26)),
                 ),
                 child: Text(
                   monthLabel,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.white : const Color(0xFF1A1A1A),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -313,14 +316,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2D1515),
+                    color: isDarkMode ? const Color(0xFF2D1515) : Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.white.withAlpha(26)),
                   ),
                   child: Text(
                     'Week: $weekNumber',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: isDarkMode ? Colors.white : const Color(0xFF1A1A1A),
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),

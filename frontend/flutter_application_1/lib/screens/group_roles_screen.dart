@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:provider/provider.dart';
 import '../models/role.dart';
 import '../providers/auth_provider.dart';
+import '../theme/app_colors.dart';
 
 class GroupRolesScreen extends StatefulWidget {
   final int groupId;
@@ -76,6 +78,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
     final nameController = TextEditingController(text: role?.name ?? '');
     final colorController = TextEditingController(text: role?.color ?? '');
     final selectedPermissions = {...role?.permissions ?? <String>[]};
+    Color selectedColor = _parseRoleColor(role?.color);
 
     await showDialog(
       context: context,
@@ -113,6 +116,11 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                   TextField(
                     controller: colorController,
                     style: const TextStyle(color: Colors.white),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        selectedColor = _parseRoleColor(value);
+                      });
+                    },
                     decoration: InputDecoration(
                       labelText: 'Color hex (optional)',
                       hintText: '#8B1A2C',
@@ -125,6 +133,77 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       focusedBorder: const OutlineInputBorder(
                         borderSide: BorderSide(color: Color(0xFF8B1A2C)),
                         borderRadius: BorderRadius.all(Radius.circular(12)),
+                      ),
+                      suffixIcon: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: selectedColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white54),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        Color pickerColor = selectedColor;
+                        final picked = await showDialog<Color>(
+                          context: context,
+                          builder: (pickerContext) => AlertDialog(
+                            backgroundColor: const Color(0xFF1A0A0A),
+                            title: const Text(
+                              'Pick role color',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            content: SingleChildScrollView(
+                              child: ColorPicker(
+                                pickerColor: pickerColor,
+                                onColorChanged: (color) => pickerColor = color,
+                                enableAlpha: false,
+                                hexInputBar: true,
+                                labelTypes: const [],
+                                pickerAreaHeightPercent: 0.7,
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(pickerContext),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Colors.white54),
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: () =>
+                                    Navigator.pop(pickerContext, pickerColor),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF8B1A2C),
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Use color'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (picked == null) return;
+                        setDialogState(() {
+                          selectedColor = picked;
+                          colorController.text = _toHexColor(picked);
+                        });
+                      },
+                      icon: const Icon(Icons.color_lens_outlined),
+                      label: const Text('Pick color'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withAlpha(90)),
                       ),
                     ),
                   ),
@@ -566,12 +645,17 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
     return const Color(0xFF8B1A2C);
   }
 
+  String _toHexColor(Color color) {
+    final hex = color.toARGB32().toRadixString(16).toUpperCase();
+    return '#${hex.substring(2)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Roles - ${widget.groupName}'),
-        backgroundColor: const Color(0xFF1A0A0A),
+        backgroundColor: AppColors.dialogBackground(context),
         actions: [
           IconButton(
             onPressed: _showAssignRoleDialog,
@@ -586,16 +670,11 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF8B1A2C),
-              Color(0xFF3D0C0C),
-              Color(0xFF1A0A0A),
-              Color(0xFF0D0D0D),
-            ],
+            colors: AppColors.screenGradient(context),
           ),
         ),
         child: _isLoading

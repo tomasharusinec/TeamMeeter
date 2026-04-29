@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../theme/app_colors.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -114,18 +115,15 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   @override
   Widget build(BuildContext context) {
+    final gradientColors = AppColors.screenGradient(context);
+    final textColor = AppColors.textPrimary(context);
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0D0D0D),
-              Color(0xFF1A0A0A),
-              Color(0xFF3D0C0C),
-              Color(0xFF6B1A1A),
-            ],
+            colors: gradientColors,
             stops: [0.0, 0.3, 0.7, 1.0],
           ),
         ),
@@ -145,20 +143,20 @@ class _RegisterScreenState extends State<RegisterScreen>
                           const SizedBox(height: 20),
                           const TeamMeeterLogo(),
                           const SizedBox(height: 12),
-                          const Text(
+                          Text(
                             'TeamMeeter',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: textColor,
                               fontSize: 24,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 1.2,
                             ),
                           ),
                           const SizedBox(height: 32),
-                          const Text(
+                          Text(
                             'Registration',
                             style: TextStyle(
-                              color: Colors.white,
+                              color: textColor,
                               fontSize: 20,
                               fontWeight: FontWeight.w500,
                             ),

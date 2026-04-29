@@ -129,4 +129,13 @@ class AuthProvider with ChangeNotifier {
       // Keep silent; callers may decide whether to show an error.
     }
   }
+
+  Future<void> refreshCurrentUser() async {
+    if (_token == null) return;
+    final loadedUser = await _apiService.getCurrentUser();
+    if (loadedUser != null) {
+      _user = loadedUser;
+      notifyListeners();
+    }
+  }
 }

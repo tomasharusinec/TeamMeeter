@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint, send_file
 import io
+import uuid
 from helper_func import get_current_user_id, db, is_group_member, check_permission, load_yaml, is_valid_image
 
 groups_blueprint = Blueprint('groups', __name__)
@@ -17,11 +18,25 @@ def create_group():
     identity = get_jwt_identity()
     user_id = get_current_user_id(identity)
     name = request.json.get("name")
+    capacity = request.json.get("capacity", 10)
+    generate_qr = request.json.get("generate_qr", False)
 
     if not name:
         return {
             "message": "Group name is required!"
         }, 400
+    try:
+        capacity = int(capacity)
+    except (TypeError, ValueError):
+        return {
+            "message": "Capacity must be a valid number!"
+        }, 400
+
+    if capacity < 1:
+        return {
+            "message": "Capacity must be greater than 0!"
+        }, 400
+    qr_code = str(uuid.uuid4()) if generate_qr else None
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -37,9 +52,15 @@ def create_group():
                            VALUES (%s, %s)
                            """, (conv_id, user_id))
 
-            cursor.execute("""INSERT INTO "group" (name, conversation_id)
-                              VALUES (%s, %s) RETURNING id_group""", (name, conv_id))
+            cursor.execute("""INSERT INTO "group" (name, conversation_id, capacity)
+                              VALUES (%s, %s, %s) RETURNING id_group""", (name, conv_id, capacity))
             new_group_id = cursor.fetchone()["id_group"]
+            if qr_code:
+                cursor.execute("""
+                               UPDATE "group"
+                               SET qr_code = %s
+                               WHERE id_group = %s
+                               """, (qr_code, new_group_id))
 
             cursor.execute("""INSERT INTO role (group_id, name, color)
                               VALUES (%s, 'Manager', '#FF0000') RETURNING id_role""", (new_group_id,))
@@ -59,7 +80,8 @@ def create_group():
             return {
                 "message": "Group created successfully",
                 "group_id": new_group_id,
-                "conversation_id": conv_id
+                "conversation_id": conv_id,
+                "qr_code": qr_code
             }, 201
     except Exception as e:
         db.rollback()
@@ -77,7 +99,7 @@ def get_groups():
     current_user_id = get_current_user_id(identity)
 
     cursor.execute("""
-                   SELECT g.id_group, g.name, g.create_date, (g.icon IS NOT NULL) as has_icon
+                   SELECT g.id_group, g.name, g.capacity, g.create_date, (g.icon IS NOT NULL) as has_icon
                    FROM "group" g
                    JOIN group_member gm ON g.id_group = gm.group_id
                    WHERE gm.user_id = %s
@@ -103,7 +125,7 @@ def get_group(group_id):
         }, 403
 
     cursor.execute("""
-                   SELECT id_group, name, create_date, (icon IS NOT NULL) as has_icon, conversation_id
+                   SELECT id_group, name, capacity, create_date, (icon IS NOT NULL) as has_icon, conversation_id, qr_code
                    FROM "group"
                    WHERE id_group = %s
                    """, (group_id,))
@@ -139,17 +161,31 @@ def update_group(group_id):
 
     try:
         name = request.json.get("name")
-    except:
+        capacity = request.json.get("capacity")
+    except Exception:
         return {
             "message": "Invalid format!"
         }, 400
 
+    if capacity is not None:
+        try:
+            capacity = int(capacity)
+        except (TypeError, ValueError):
+            return {
+                "message": "Capacity must be a valid number!"
+            }, 400
+        if capacity < 1:
+            return {
+                "message": "Capacity must be greater than 0!"
+            }, 400
+
     try:
         cursor.execute("""
                        UPDATE "group"
-                       SET name = COALESCE(%s, name)
+                       SET name = COALESCE(%s, name),
+                           capacity = COALESCE(%s, capacity)
                        WHERE id_group = %s RETURNING conversation_id
-                       """, (name, group_id))
+                       """, (name, capacity, group_id))
 
         updated_group = cursor.fetchone()
 
@@ -295,6 +331,28 @@ def add_group_member(group_id):
             "message": "User is already a member of this group!"
         }, 400
 
+    cursor.execute("""
+                    SELECT capacity
+                    FROM "group"
+                    WHERE id_group = %s
+                   """, (group_id,))
+    group_result = cursor.fetchone()
+    if group_result is None:
+        return {
+            "message": "Group not found!"
+        }, 404
+
+    cursor.execute("""
+                    SELECT COUNT(*) AS member_count
+                    FROM group_member
+                    WHERE group_id = %s
+                   """, (group_id,))
+    member_count = cursor.fetchone()["member_count"]
+    if member_count >= group_result["capacity"]:
+        return {
+            "message": "Group has reached its capacity!"
+        }, 400
+
     try:
         cursor.execute("""INSERT INTO group_member (group_id, user_id)
                           VALUES (%s, %s)
@@ -334,6 +392,175 @@ def add_group_member(group_id):
     return {
         "message": "Member added successfully"
     }, 200
+
+@groups_blueprint.route('/join', methods=["POST"])
+@jwt_required()
+def join_group():
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    try:
+        invite_code = request.json.get("invite_code", "").strip()
+    except Exception:
+        return {"message": "Invalid format!"}, 400
+
+    if not invite_code:
+        return {"message": "Invite code is required!"}, 400
+
+    cursor.execute("""
+                    SELECT id_group, capacity, conversation_id
+                    FROM "group"
+                    WHERE qr_code = %s
+                   """, (invite_code,))
+    group = cursor.fetchone()
+    if group is None:
+        return {"message": "Invalid invite code!"}, 404
+
+    group_id = group["id_group"]
+    if is_group_member(current_user_id, group_id):
+        return {"message": "You are already a member of this group!"}, 400
+
+    cursor.execute("""
+                    SELECT COUNT(*) AS member_count
+                    FROM group_member
+                    WHERE group_id = %s
+                   """, (group_id,))
+    member_count = cursor.fetchone()["member_count"]
+    if member_count >= group["capacity"]:
+        return {"message": "Group has reached its capacity!"}, 400
+
+    try:
+        cursor.execute("""
+                        INSERT INTO group_member (group_id, user_id)
+                        VALUES (%s, %s)
+                       """, (group_id, current_user_id))
+
+        cursor.execute("""
+                        SELECT id_role
+                        FROM role
+                        WHERE group_id = %s AND name = %s
+                       """, (group_id, 'Member'))
+        role_result = cursor.fetchone()
+
+        if role_result:
+            role_id = role_result["id_role"]
+        else:
+            cursor.execute("""
+                            INSERT INTO role (group_id, name, color)
+                            VALUES (%s, %s, %s)
+                            RETURNING id_role
+                           """, (group_id, 'Member', '#808080'))
+            role_id = cursor.fetchone()["id_role"]
+            cursor.execute("""
+                            INSERT INTO role_permission (role_id, permission_id, value)
+                            SELECT %s, id_permission, FALSE
+                            FROM permission
+                           """, (role_id,))
+
+        cursor.execute("""
+                        INSERT INTO user_role (user_id, role_id)
+                        VALUES (%s, %s)
+                       """, (current_user_id, role_id))
+
+        if group["conversation_id"]:
+            cursor.execute("""
+                            INSERT INTO participant (conversation_id, user_id)
+                            VALUES (%s, %s)
+                           """, (group["conversation_id"], current_user_id))
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        return {"message": "Failed to join group!"}, 500
+
+    return {"message": "Joined group successfully"}, 200
+
+@groups_blueprint.route('/<int:group_id>/invite', methods=["GET"])
+@jwt_required()
+def get_group_invite(group_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    cursor.execute("""
+                    SELECT qr_code
+                    FROM "group"
+                    WHERE id_group = %s
+                   """, (group_id,))
+    result = cursor.fetchone()
+    if result is None:
+        return {"message": "Group not found!"}, 404
+
+    return {
+        "message": "Success",
+        "qr_code": result["qr_code"]
+    }, 200
+
+@groups_blueprint.route('/<int:group_id>/invite', methods=["POST"])
+@jwt_required()
+def enable_group_invite(group_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    if not check_permission(current_user_id, group_id, "manage_group"):
+        return {"message": "You don't have permission to manage this group!"}, 403
+
+    cursor.execute("""
+                    SELECT qr_code
+                    FROM "group"
+                    WHERE id_group = %s
+                   """, (group_id,))
+    result = cursor.fetchone()
+    if result is None:
+        return {"message": "Group not found!"}, 404
+
+    qr_code = result["qr_code"] or str(uuid.uuid4())
+
+    try:
+        cursor.execute("""
+                        UPDATE "group"
+                        SET qr_code = %s
+                        WHERE id_group = %s
+                       """, (qr_code, group_id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        return {"message": "Failed to enable invite QR code!"}, 500
+
+    return {
+        "message": "Invite QR code enabled successfully",
+        "qr_code": qr_code
+    }, 200
+
+@groups_blueprint.route('/<int:group_id>/invite', methods=["DELETE"])
+@jwt_required()
+def disable_group_invite(group_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    if not check_permission(current_user_id, group_id, "manage_group"):
+        return {"message": "You don't have permission to manage this group!"}, 403
+
+    try:
+        cursor.execute("""
+                        UPDATE "group"
+                        SET qr_code = NULL
+                        WHERE id_group = %s
+                       """, (group_id,))
+        db.commit()
+    except Exception:
+        db.rollback()
+        return {"message": "Failed to disable invite QR code!"}, 500
+
+    return {"message": "Invite QR code disabled successfully"}, 200
 
 
 @groups_blueprint.route('/<int:group_id>/members/<int:user_id>', methods=["DELETE"])

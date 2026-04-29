@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/group.dart';
 import '../models/role.dart';
+import '../theme/app_colors.dart';
 
 class CreateActivityDialog extends StatefulWidget {
   final List<Group> groups;
@@ -185,20 +186,27 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = AppColors.isDark(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1A0A0A),
-              Color(0xFF3D0C0C),
-              Color(0xFF6B1520),
-            ],
+            colors: isDarkMode
+                ? const [
+                    Color(0xFF1A0A0A),
+                    Color(0xFF3D0C0C),
+                    Color(0xFF6B1520),
+                  ]
+                : const [
+                    Color(0xFFF2ECEC),
+                    Color(0xFFE8DFDF),
+                    Color(0xFFD8D2D2),
+                  ],
           ),
           border: Border.all(color: Colors.white.withAlpha(26)),
           boxShadow: [
@@ -216,10 +224,10 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Title
-                const Text(
+                Text(
                   'Create activity',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textPrimary(context),
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
                   ),
@@ -444,12 +452,13 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
   }
 
   Widget _buildLabel(String text) {
+    final textColor = AppColors.textPrimary(context);
     return Align(
       alignment: Alignment.centerLeft,
       child: Text(
         text,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: textColor,
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
