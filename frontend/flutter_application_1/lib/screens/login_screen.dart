@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
 import '../providers/auth_provider.dart';
+import '../utils/snackbar_utils.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -45,23 +46,24 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _submit() async {
     if (_formKey.currentState!.validate()) {
       try {
-        await Provider.of<AuthProvider>(context, listen: false).login(
-          _usernameController.text,
-          _passwordController.text,
-        );
+        await Provider.of<AuthProvider>(
+          context,
+          listen: false,
+        ).login(_usernameController.text, _passwordController.text);
       } catch (e) {
         if (mounted) {
           final cleaned = e.toString().replaceAll('Exception: ', '').trim();
           final message = (cleaned.isEmpty || cleaned == 'Exception')
               ? 'Wrong credentials'
               : cleaned;
-          ScaffoldMessenger.of(context).showSnackBar(
+          context.showLatestSnackBar(
             SnackBar(
               content: Text(message),
               backgroundColor: const Color(0xFF8B1A2C),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           );
         }
@@ -144,9 +146,13 @@ class _LoginScreenState extends State<LoginScreen>
                             },
                           ),
                           const SizedBox(height: 16),
-                          const Text('or',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 14)),
+                          const Text(
+                            'or',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           // Google sign in placeholder
                           Container(
@@ -163,47 +169,66 @@ class _LoginScreenState extends State<LoginScreen>
                               ],
                             ),
                             child: const Center(
-                              child: Text('G',
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF333333),
-                                  )),
+                              child: Text(
+                                'G',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF333333),
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 24),
                           // Sign in button
                           _buildButton(
                             text: 'Sign in',
-                            onPressed:
-                                authProvider.isLoading ? null : _submit,
+                            onPressed: authProvider.isLoading ? null : _submit,
                             isLoading: authProvider.isLoading,
                           ),
                           const SizedBox(height: 4),
                           TextButton(
                             onPressed: () {},
-                            child: const Text('Forgot password?',
-                                style: TextStyle(
-                                    color: Color(0xFFE57373), fontSize: 12)),
+                            child: const Text(
+                              'Forgot password?',
+                              style: TextStyle(
+                                color: Color(0xFFE57373),
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 12),
-                          const Text("Don't have an account?",
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 13)),
+                          const Text(
+                            "Don't have an account?",
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           _buildButton(
                             text: 'Register',
                             onPressed: () {
                               Navigator.of(context).push(
                                 PageRouteBuilder(
-                                  pageBuilder: (context, animation,
-                                          secondaryAnimation) =>
-                                      const RegisterScreen(),
-                                  transitionsBuilder: (context, animation,
-                                      secondaryAnimation, child) {
-                                    return FadeTransition(
-                                        opacity: animation, child: child);
-                                  },
+                                  pageBuilder:
+                                      (
+                                        context,
+                                        animation,
+                                        secondaryAnimation,
+                                      ) => const RegisterScreen(),
+                                  transitionsBuilder:
+                                      (
+                                        context,
+                                        animation,
+                                        secondaryAnimation,
+                                        child,
+                                      ) {
+                                        return FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        );
+                                      },
                                 ),
                               );
                             },
@@ -238,8 +263,10 @@ class _LoginScreenState extends State<LoginScreen>
         hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
         filled: true,
         fillColor: const Color(0xFFF5F0F0),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(25),
           borderSide: BorderSide(color: Colors.grey.shade300),
@@ -260,9 +287,7 @@ class _LoginScreenState extends State<LoginScreen>
         suffixIcon: isPassword
             ? IconButton(
                 icon: Icon(
-                  _isPasswordVisible
-                      ? Icons.visibility
-                      : Icons.visibility_off,
+                  _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
                   color: Colors.grey.shade500,
                   size: 20,
                 ),
@@ -303,12 +328,17 @@ class _LoginScreenState extends State<LoginScreen>
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Color(0xFF8B1A2C)),
+                  strokeWidth: 2,
+                  color: Color(0xFF8B1A2C),
+                ),
               )
-            : Text(text,
+            : Text(
+                text,
                 style: TextStyle(
-                    fontSize: small ? 13 : 14,
-                    fontWeight: FontWeight.w500)),
+                  fontSize: small ? 13 : 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
       ),
     );
   }
@@ -336,8 +366,11 @@ class TeamMeeterLogo extends StatelessWidget {
               border: Border.all(color: Colors.white, width: 2),
               borderRadius: BorderRadius.circular(size * 0.22),
             ),
-            child: Icon(Icons.videocam_outlined,
-                color: Colors.white, size: size * 0.44),
+            child: Icon(
+              Icons.videocam_outlined,
+              color: Colors.white,
+              size: size * 0.44,
+            ),
           ),
           Positioned(
             top: 0,

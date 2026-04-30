@@ -10,6 +10,8 @@ class Activity {
   final int? groupId;
   final String? groupName;
   final String? creatorUsername;
+  final bool isLocalOnly;
+  final bool hasPendingSync;
 
   Activity({
     required this.idActivity,
@@ -21,6 +23,8 @@ class Activity {
     this.groupId,
     this.groupName,
     this.creatorUsername,
+    this.isLocalOnly = false,
+    this.hasPendingSync = false,
   });
 
   factory Activity.fromJson(Map<String, dynamic> json) {
@@ -41,6 +45,66 @@ class Activity {
       groupId: json['group_id'],
       groupName: json['group_name'],
       creatorUsername: json['creator_username'],
+    );
+  }
+
+  factory Activity.fromCacheJson(Map<String, dynamic> json) {
+    return Activity(
+      idActivity: json['id_activity'] as int,
+      name: json['name']?.toString() ?? '',
+      description: json['description']?.toString(),
+      creationDate: json['creation_date']?.toString(),
+      deadline: json['deadline']?.toString(),
+      status: (json['status']?.toString() ?? 'todo'),
+      groupId: json['group_id'] as int?,
+      groupName: json['group_name']?.toString(),
+      creatorUsername: json['creator_username']?.toString(),
+      isLocalOnly: json['is_local_only'] == true,
+      hasPendingSync: json['has_pending_sync'] == true,
+    );
+  }
+
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'id_activity': idActivity,
+      'name': name,
+      'description': description,
+      'creation_date': creationDate,
+      'deadline': deadline,
+      'status': status,
+      'group_id': groupId,
+      'group_name': groupName,
+      'creator_username': creatorUsername,
+      'is_local_only': isLocalOnly,
+      'has_pending_sync': hasPendingSync,
+    };
+  }
+
+  Activity copyWith({
+    int? idActivity,
+    String? name,
+    String? description,
+    String? creationDate,
+    String? deadline,
+    String? status,
+    int? groupId,
+    String? groupName,
+    String? creatorUsername,
+    bool? isLocalOnly,
+    bool? hasPendingSync,
+  }) {
+    return Activity(
+      idActivity: idActivity ?? this.idActivity,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      creationDate: creationDate ?? this.creationDate,
+      deadline: deadline ?? this.deadline,
+      status: status ?? this.status,
+      groupId: groupId ?? this.groupId,
+      groupName: groupName ?? this.groupName,
+      creatorUsername: creatorUsername ?? this.creatorUsername,
+      isLocalOnly: isLocalOnly ?? this.isLocalOnly,
+      hasPendingSync: hasPendingSync ?? this.hasPendingSync,
     );
   }
 

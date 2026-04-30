@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -99,13 +100,14 @@ class _RegisterScreenState extends State<RegisterScreen>
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          context.showLatestSnackBar(
             SnackBar(
               content: Text(e.toString().replaceAll('Exception: ', '')),
               backgroundColor: const Color(0xFF8B1A2C),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           );
         }
@@ -189,8 +191,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                             keyboardType: TextInputType.emailAddress,
                             validator: (value) {
                               if (value?.isEmpty ?? true) return 'Required';
-                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                                  .hasMatch(value!)) {
+                              if (!RegExp(
+                                r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                              ).hasMatch(value!)) {
                                 return 'Invalid email';
                               }
                               return null;
@@ -225,16 +228,16 @@ class _RegisterScreenState extends State<RegisterScreen>
                             width: 180,
                             height: 44,
                             child: ElevatedButton(
-                              onPressed:
-                                  authProvider.isLoading ? null : _submit,
+                              onPressed: authProvider.isLoading
+                                  ? null
+                                  : _submit,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFF5F0F0),
                                 foregroundColor: const Color(0xFF333333),
                                 elevation: 2,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(25),
-                                  side: BorderSide(
-                                      color: Colors.grey.shade300),
+                                  side: BorderSide(color: Colors.grey.shade300),
                                 ),
                               ),
                               child: authProvider.isLoading
@@ -242,30 +245,40 @@ class _RegisterScreenState extends State<RegisterScreen>
                                       width: 20,
                                       height: 20,
                                       child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Color(0xFF8B1A2C)),
+                                        strokeWidth: 2,
+                                        color: Color(0xFF8B1A2C),
+                                      ),
                                     )
-                                  : const Text('Register',
+                                  : const Text(
+                                      'Register',
                                       style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500)),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 16),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Text('Already have an account? ',
-                                  style: TextStyle(
-                                      color: Colors.white70, fontSize: 13)),
+                              const Text(
+                                'Already have an account? ',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
                               GestureDetector(
                                 onTap: () => Navigator.of(context).pop(),
-                                child: const Text('Sign in',
-                                    style: TextStyle(
-                                      color: Color(0xFFE57373),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    )),
+                                child: const Text(
+                                  'Sign in',
+                                  style: TextStyle(
+                                    color: Color(0xFFE57373),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -301,8 +314,10 @@ class _RegisterScreenState extends State<RegisterScreen>
         hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
         filled: true,
         fillColor: const Color(0xFFF5F0F0),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(25),
           borderSide: BorderSide(color: Colors.grey.shade300),
@@ -323,9 +338,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         suffixIcon: isPassword
             ? IconButton(
                 icon: Icon(
-                  _isPasswordVisible
-                      ? Icons.visibility
-                      : Icons.visibility_off,
+                  _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
                   color: Colors.grey.shade500,
                   size: 20,
                 ),
@@ -333,8 +346,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                     setState(() => _isPasswordVisible = !_isPasswordVisible),
               )
             : suffixIcon != null
-                ? Icon(suffixIcon, color: Colors.grey.shade500, size: 20)
-                : null,
+            ? Icon(suffixIcon, color: Colors.grey.shade500, size: 20)
+            : null,
       ),
       validator: validator,
     );

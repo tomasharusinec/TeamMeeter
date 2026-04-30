@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/activity.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 
 class ActivityDetailDialog extends StatefulWidget {
   final Activity activity;
@@ -89,7 +90,7 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
       if (!mounted) return;
       Navigator.of(context).pop();
       widget.onDeleted?.call();
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         const SnackBar(
           content: Text('Aktivita bola zmazaná'),
           backgroundColor: Color(0xFF2E7D32),
@@ -97,7 +98,7 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -113,13 +114,12 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
   Future<void> _markAsCompleted() async {
     setState(() => _isMarkingCompleted = true);
     try {
-      final api =
-          Provider.of<AuthProvider>(context, listen: false).apiService;
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       await api.updateActivityStatus(_activity.idActivity, 'completed');
       if (!mounted) return;
       Navigator.of(context).pop();
       widget.onDeleted?.call();
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         const SnackBar(
           content: Text('Aktivita bola označená ako vybavená'),
           backgroundColor: Color(0xFF2E7D32),
@@ -127,7 +127,7 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -166,9 +166,12 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _detailRow('Termín', _activity.formattedDeadline.isEmpty
-                      ? 'Bez termínu'
-                      : _activity.formattedDeadline),
+                  _detailRow(
+                    'Termín',
+                    _activity.formattedDeadline.isEmpty
+                        ? 'Bez termínu'
+                        : _activity.formattedDeadline,
+                  ),
                   _detailRow('Stav', () {
                     final s = _activity.status;
                     if (s == 'todo') return 'To-do';
@@ -176,11 +179,18 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
                     if (s == 'completed') return 'Vybavené';
                     return s;
                   }()),
-                  _detailRow('Typ', _activity.groupId == null ? 'Individuálna' : 'Skupinová'),
+                  _detailRow(
+                    'Typ',
+                    _activity.groupId == null ? 'Individuálna' : 'Skupinová',
+                  ),
                   _detailRow('Skupina', _activity.groupName ?? '-'),
                   _detailRow('Vytvoril', _activity.creatorUsername ?? '-'),
-                  _detailRow('Popis',
-                      (_activity.description?.trim().isNotEmpty ?? false) ? _activity.description! : '-'),
+                  _detailRow(
+                    'Popis',
+                    (_activity.description?.trim().isNotEmpty ?? false)
+                        ? _activity.description!
+                        : '-',
+                  ),
                   const SizedBox(height: 18),
                   Wrap(
                     spacing: 10,
@@ -196,8 +206,9 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
                       ),
                       if (_activity.status != 'completed')
                         ElevatedButton(
-                          onPressed:
-                              _isMarkingCompleted ? null : _markAsCompleted,
+                          onPressed: _isMarkingCompleted
+                              ? null
+                              : _markAsCompleted,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2E7D32),
                             foregroundColor: Colors.white,
@@ -249,10 +260,7 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
           children: [
             TextSpan(
               text: '$label: ',
-              style: TextStyle(
-                color: textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
             ),
             TextSpan(text: value),
           ],

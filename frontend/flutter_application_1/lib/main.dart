@@ -21,7 +21,9 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (context) => AuthProvider()..loadSavedToken(),
         ),
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(
+          create: (_) => ThemeProvider()..loadSavedTheme(),
+        ),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
@@ -40,7 +42,9 @@ class MyApp extends StatelessWidget {
                 onSecondary: Colors.white,
                 onSurface: Color(0xFF1A1A1A),
               ),
-              textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme),
+              textTheme: GoogleFonts.interTextTheme(
+                ThemeData.light().textTheme,
+              ),
               dialogTheme: const DialogThemeData(
                 backgroundColor: Color(0xFFF2ECEC),
               ),

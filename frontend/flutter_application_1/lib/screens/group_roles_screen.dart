@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/role.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 
 class GroupRolesScreen extends StatefulWidget {
   final int groupId;
@@ -61,7 +62,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -85,7 +86,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A0A0A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           title: Text(
             role == null ? 'Create role' : 'Edit role',
             style: const TextStyle(color: Colors.white),
@@ -103,7 +106,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       labelText: 'Role name',
                       labelStyle: const TextStyle(color: Colors.white70),
                       enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white.withAlpha(60)),
+                        borderSide: BorderSide(
+                          color: Colors.white.withAlpha(60),
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       focusedBorder: const OutlineInputBorder(
@@ -127,7 +132,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       labelStyle: const TextStyle(color: Colors.white70),
                       hintStyle: const TextStyle(color: Colors.white30),
                       enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white.withAlpha(60)),
+                        borderSide: BorderSide(
+                          color: Colors.white.withAlpha(60),
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       focusedBorder: const OutlineInputBorder(
@@ -237,7 +244,10 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       controlAffinity: ListTileControlAffinity.leading,
                       title: Text(
                         permission,
-                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ),
@@ -248,22 +258,27 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
                 final name = nameController.text.trim();
                 final color = colorController.text.trim();
                 if (name.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  context.showLatestSnackBar(
                     const SnackBar(content: Text('Role name is required')),
                   );
                   return;
                 }
                 try {
-                  final api =
-                      Provider.of<AuthProvider>(this.context, listen: false)
-                          .apiService;
+                  final api = Provider.of<AuthProvider>(
+                    this.context,
+                    listen: false,
+                  ).apiService;
+                  final beforeQueue = await api.getPendingOfflineChangesCount();
                   if (role == null) {
                     await api.createGroupRole(
                       groupId: widget.groupId,
@@ -280,12 +295,21 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       permissions: selectedPermissions.toList(),
                     );
                   }
+                  final afterQueue = await api.getPendingOfflineChangesCount();
                   if (!context.mounted) return;
                   Navigator.pop(context);
                   await _loadRoles();
+                  if (afterQueue > beforeQueue && mounted) {
+                    this.context.showLatestSnackBar(
+                      const SnackBar(
+                        content: Text('Zmena rolí je uložená offline.'),
+                        backgroundColor: Color(0xFFEF6C00),
+                      ),
+                    );
+                  }
                 } catch (e) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  context.showLatestSnackBar(
                     SnackBar(
                       content: Text(e.toString().replaceAll('Exception: ', '')),
                       backgroundColor: const Color(0xFF8B1A2C),
@@ -318,7 +342,10 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -335,11 +362,21 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
 
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final beforeQueue = await api.getPendingOfflineChangesCount();
       await api.deleteGroupRole(groupId: widget.groupId, roleId: role.idRole);
+      final afterQueue = await api.getPendingOfflineChangesCount();
       await _loadRoles();
+      if (afterQueue > beforeQueue && mounted) {
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text('Vymazanie roly je uložené offline.'),
+            backgroundColor: Color(0xFFEF6C00),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -350,9 +387,11 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
 
   Future<void> _showAssignRoleDialog() async {
     if (_roles.isEmpty || _members.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         const SnackBar(
-          content: Text('Najprv vytvorte rolu a uistite sa, že skupina má členov'),
+          content: Text(
+            'Najprv vytvorte rolu a uistite sa, že skupina má členov',
+          ),
           backgroundColor: Color(0xFF8B1A2C),
         ),
       );
@@ -367,7 +406,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A0A0A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           title: const Text(
             'Assign role to user',
             style: TextStyle(color: Colors.white),
@@ -403,7 +444,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       ),
                     )
                     .toList(),
-                onChanged: (value) => setDialogState(() => selectedUsername = value),
+                onChanged: (value) =>
+                    setDialogState(() => selectedUsername = value),
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(
@@ -432,7 +474,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     )
                     .toList(),
                 onChanged: (value) => setDialogState(
-                  () => selectedRole = _roles.firstWhere((r) => r.idRole == value),
+                  () => selectedRole = _roles.firstWhere(
+                    (r) => r.idRole == value,
+                  ),
                 ),
               ),
             ],
@@ -440,31 +484,43 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
                 if (selectedUsername == null || selectedRole == null) return;
                 try {
-                  final api =
-                      Provider.of<AuthProvider>(this.context, listen: false)
-                          .apiService;
+                  final api = Provider.of<AuthProvider>(
+                    this.context,
+                    listen: false,
+                  ).apiService;
+                  final beforeQueue = await api.getPendingOfflineChangesCount();
                   await api.assignUserRole(
                     groupId: widget.groupId,
                     username: selectedUsername!,
                     roleId: selectedRole!.idRole,
                   );
+                  final afterQueue = await api.getPendingOfflineChangesCount();
                   if (!context.mounted) return;
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Rola bola priradená používateľovi'),
-                      backgroundColor: Color(0xFF2E7D32),
+                  this.context.showLatestSnackBar(
+                    SnackBar(
+                      content: Text(
+                        afterQueue > beforeQueue
+                            ? 'Priradenie roly je uložené offline.'
+                            : 'Rola bola priradená používateľovi',
+                      ),
+                      backgroundColor: afterQueue > beforeQueue
+                          ? const Color(0xFFEF6C00)
+                          : const Color(0xFF2E7D32),
                     ),
                   );
                 } catch (e) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  context.showLatestSnackBar(
                     SnackBar(
                       content: Text(e.toString().replaceAll('Exception: ', '')),
                       backgroundColor: const Color(0xFF8B1A2C),
@@ -486,7 +542,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
 
   Future<void> _showRemoveRoleDialog() async {
     if (_roles.isEmpty || _members.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         const SnackBar(
           content: Text('Nie sú načítané role alebo členovia skupiny'),
           backgroundColor: Color(0xFF8B1A2C),
@@ -503,7 +559,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A0A0A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           title: const Text(
             'Remove role from user',
             style: TextStyle(color: Colors.white),
@@ -569,8 +627,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     )
                     .toList(),
                 onChanged: (value) => setDialogState(
-                  () => selectedRole =
-                      _roles.firstWhere((r) => r.idRole == value),
+                  () => selectedRole = _roles.firstWhere(
+                    (r) => r.idRole == value,
+                  ),
                 ),
               ),
             ],
@@ -578,7 +637,10 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -592,29 +654,36 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                 if (userId == null) return;
 
                 try {
-                  final api =
-                      Provider.of<AuthProvider>(this.context, listen: false)
-                          .apiService;
+                  final api = Provider.of<AuthProvider>(
+                    this.context,
+                    listen: false,
+                  ).apiService;
+                  final beforeQueue = await api.getPendingOfflineChangesCount();
                   await api.removeUserRole(
                     groupId: widget.groupId,
                     userId: userId,
                     roleId: selectedRole!.idRole,
                   );
+                  final afterQueue = await api.getPendingOfflineChangesCount();
                   if (!context.mounted) return;
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Rola bola odobratá používateľovi'),
-                      backgroundColor: Color(0xFF2E7D32),
+                  this.context.showLatestSnackBar(
+                    SnackBar(
+                      content: Text(
+                        afterQueue > beforeQueue
+                            ? 'Odobratie roly je uložené offline.'
+                            : 'Rola bola odobratá používateľovi',
+                      ),
+                      backgroundColor: afterQueue > beforeQueue
+                          ? const Color(0xFFEF6C00)
+                          : const Color(0xFF2E7D32),
                     ),
                   );
                 } catch (e) {
                   if (!context.mounted) return;
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  this.context.showLatestSnackBar(
                     SnackBar(
-                      content: Text(
-                        e.toString().replaceAll('Exception: ', ''),
-                      ),
+                      content: Text(e.toString().replaceAll('Exception: ', '')),
                       backgroundColor: const Color(0xFF8B1A2C),
                     ),
                   );
@@ -678,7 +747,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           ),
         ),
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.white))
+            ? const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              )
             : RefreshIndicator(
                 onRefresh: _loadRoles,
                 color: const Color(0xFF8B1A2C),
@@ -704,7 +775,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF1A0A0A).withAlpha(190),
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.white.withAlpha(20)),
+                              border: Border.all(
+                                color: Colors.white.withAlpha(20),
+                              ),
                             ),
                             child: ListTile(
                               leading: Container(
@@ -725,7 +798,10 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                               ),
                               trailing: PopupMenuButton<String>(
                                 color: const Color(0xFF1A0A0A),
-                                icon: const Icon(Icons.more_vert, color: Colors.white70),
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  color: Colors.white70,
+                                ),
                                 onSelected: (value) {
                                   if (value == 'edit') {
                                     _showRoleDialog(role: role);
@@ -736,13 +812,17 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                                 itemBuilder: (context) => const [
                                   PopupMenuItem(
                                     value: 'edit',
-                                    child: Text('Edit',
-                                        style: TextStyle(color: Colors.white)),
+                                    child: Text(
+                                      'Edit',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
                                   ),
                                   PopupMenuItem(
                                     value: 'delete',
-                                    child: Text('Delete',
-                                        style: TextStyle(color: Colors.white)),
+                                    child: Text(
+                                      'Delete',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
                                   ),
                                 ],
                               ),

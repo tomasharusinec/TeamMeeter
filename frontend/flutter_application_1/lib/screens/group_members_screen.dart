@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 
 class GroupMembersScreen extends StatefulWidget {
   final int groupId;
@@ -45,7 +46,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
       setState(() => _members = members);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -63,19 +64,25 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
     setState(() => _isAdding = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final beforeQueue = await api.getPendingOfflineChangesCount();
       await api.addGroupMember(groupId: widget.groupId, username: username);
+      final afterQueue = await api.getPendingOfflineChangesCount();
       if (!mounted) return;
       _usernameController.clear();
       await _loadMembers();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Member added successfully'),
-          backgroundColor: Color(0xFF8B1A2C),
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            afterQueue > beforeQueue
+                ? 'Pridanie člena bolo uložené offline.'
+                : 'Member added successfully',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -127,18 +134,24 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
     setState(() => _removingUserId = userId);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final beforeQueue = await api.getPendingOfflineChangesCount();
       await api.removeGroupMember(groupId: widget.groupId, userId: userId);
+      final afterQueue = await api.getPendingOfflineChangesCount();
       if (!mounted) return;
       await _loadMembers();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Member removed successfully'),
-          backgroundColor: Color(0xFF8B1A2C),
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            afterQueue > beforeQueue
+                ? 'Odstránenie člena bolo uložené offline.'
+                : 'Member removed successfully',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -172,8 +185,10 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId =
-        Provider.of<AuthProvider>(context, listen: false).user?.idRegistration;
+    final currentUserId = Provider.of<AuthProvider>(
+      context,
+      listen: false,
+    ).user?.idRegistration;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Members'),
@@ -216,12 +231,14 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: BorderSide(
-                                  color: Colors.white.withAlpha(26)),
+                                color: Colors.white.withAlpha(26),
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide:
-                                  const BorderSide(color: Color(0xFF8B1A2C)),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF8B1A2C),
+                              ),
                             ),
                             filled: true,
                             fillColor: const Color(0xFF1A0A0A),
@@ -257,78 +274,82 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                           child: CircularProgressIndicator(color: Colors.white),
                         )
                       : _members.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'No members found',
-                                style: TextStyle(color: Colors.white70),
-                              ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: _loadMembers,
-                              color: const Color(0xFF8B1A2C),
-                              child: ListView.builder(
-                                padding: const EdgeInsets.only(bottom: 20),
-                                itemCount: _members.length,
-                                itemBuilder: (context, index) {
-                                  final member = _members[index];
-                                  final userId = member['id_registration'] as int?;
-                                  final isRemoving = _removingUserId == userId;
-                                  final isCurrentUser =
-                                      currentUserId != null && userId == currentUserId;
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1A0A0A).withAlpha(200),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                          color: Colors.white.withAlpha(15)),
+                      ? const Center(
+                          child: Text(
+                            'No members found',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadMembers,
+                          color: const Color(0xFF8B1A2C),
+                          child: ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 20),
+                            itemCount: _members.length,
+                            itemBuilder: (context, index) {
+                              final member = _members[index];
+                              final userId = member['id_registration'] as int?;
+                              final isRemoving = _removingUserId == userId;
+                              final isCurrentUser =
+                                  currentUserId != null &&
+                                  userId == currentUserId;
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1A0A0A).withAlpha(200),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.white.withAlpha(15),
+                                  ),
+                                ),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: const Color(0xFF8B1A2C),
+                                    child: Text(
+                                      _memberInitials(member),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                    child: ListTile(
-                                      leading: CircleAvatar(
-                                        backgroundColor: const Color(0xFF8B1A2C),
-                                        child: Text(
-                                          _memberInitials(member),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w700,
+                                  ),
+                                  title: Text(
+                                    _memberDisplayName(member),
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                  subtitle: Text(
+                                    '@${member['username'] ?? '-'}',
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  trailing: isRemoving
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Color(0xFFE57373),
                                           ),
+                                        )
+                                      : isCurrentUser
+                                      ? const SizedBox.shrink()
+                                      : IconButton(
+                                          onPressed: userId == null
+                                              ? null
+                                              : () => _removeMember(member),
+                                          icon: const Icon(
+                                            Icons.person_remove_outlined,
+                                            color: Color(0xFFE57373),
+                                          ),
+                                          tooltip: 'Remove member',
                                         ),
-                                      ),
-                                      title: Text(
-                                        _memberDisplayName(member),
-                                        style: const TextStyle(color: Colors.white),
-                                      ),
-                                      subtitle: Text(
-                                        '@${member['username'] ?? '-'}',
-                                        style: const TextStyle(
-                                            color: Colors.white60, fontSize: 12),
-                                      ),
-                                      trailing: isRemoving
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Color(0xFFE57373),
-                                              ),
-                                            )
-                                          : isCurrentUser
-                                              ? const SizedBox.shrink()
-                                              : IconButton(
-                                                  onPressed: userId == null
-                                                      ? null
-                                                      : () => _removeMember(member),
-                                                  icon: const Icon(
-                                                    Icons.person_remove_outlined,
-                                                    color: Color(0xFFE57373),
-                                                  ),
-                                                  tooltip: 'Remove member',
-                                                ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                 ),
               ],
             ),

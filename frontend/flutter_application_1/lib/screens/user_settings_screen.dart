@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../services/permission_service.dart';
 import '../services/api_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 
 class UserSettingsScreen extends StatefulWidget {
   const UserSettingsScreen({super.key});
@@ -25,7 +26,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     final hasPermission = await PermissionService.ensureGalleryPermission();
     if (!hasPermission) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         const SnackBar(
           content: Text('Povoľ prístup ku galérii v nastaveniach aplikácie.'),
           backgroundColor: Color(0xFF8B1A2C),
@@ -44,9 +45,16 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     setState(() => _isUploading = true);
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final beforeQueueCount = await authProvider.apiService
+          .getPendingOfflineChangesCount();
       await authProvider.apiService.uploadMyProfilePicture(
         imageFile: File(pickedFile.path),
       );
+      final afterQueueCount = await authProvider.apiService
+          .getPendingOfflineChangesCount();
+      if (afterQueueCount > beforeQueueCount) {
+        await authProvider.setLocalProfilePhotoPath(pickedFile.path);
+      }
       await authProvider.refreshCurrentUser();
 
       if (!mounted) return;
@@ -59,7 +67,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             style: TextStyle(color: AppColors.textPrimary(context)),
           ),
           content: Text(
-            'Profilová fotka bola úspešne zmenená.',
+            afterQueueCount > beforeQueueCount
+                ? 'Profilová fotka je uložená offline a po pripojení sa zosynchronizuje.'
+                : 'Profilová fotka bola úspešne zmenená.',
             style: TextStyle(color: AppColors.textSecondary(context)),
           ),
           actions: [
@@ -72,7 +82,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -89,19 +99,30 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     setState(() => _isDeleting = true);
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final beforeQueueCount = await authProvider.apiService
+          .getPendingOfflineChangesCount();
       await authProvider.apiService.deleteMyProfilePicture();
+      final afterQueueCount = await authProvider.apiService
+          .getPendingOfflineChangesCount();
+      if (afterQueueCount > beforeQueueCount) {
+        await authProvider.markLocalProfilePhotoRemoved();
+      }
       await authProvider.refreshCurrentUser();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profilová fotka bola odstránená.'),
-          backgroundColor: Color(0xFF8B1A2C),
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            afterQueueCount > beforeQueueCount
+                ? 'Odstránenie profilovej fotky je uložené offline.'
+                : 'Profilová fotka bola odstránená.',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -117,7 +138,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   Widget _buildProfileAvatar(AuthProvider authProvider) {
     final user = authProvider.user;
     final token = authProvider.token;
-    final hasPicture = user?.hasProfilePicture ?? false;
+    final localPath = authProvider.localProfilePhotoPath;
+    final hasLocalImage = localPath != null && File(localPath).existsSync();
+    final hasPicture =
+        !authProvider.localProfilePhotoRemoved &&
+        (user?.hasProfilePicture ?? false);
     final fallbackLetter = user?.initials ?? 'U';
 
     return Container(
@@ -129,7 +154,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
         color: const Color(0xFF2D1515),
       ),
       clipBehavior: Clip.antiAlias,
-      child: hasPicture && token != null
+      child: hasLocalImage
+          ? Image.file(File(localPath), fit: BoxFit.cover)
+          : hasPicture && token != null
           ? Image.network(
               '${ApiService.baseUrl}/users/me/profile-picture',
               fit: BoxFit.cover,
@@ -278,8 +305,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                                   ? Colors.white.withAlpha(80)
                                   : Colors.black.withAlpha(80),
                             ),
-                            foregroundColor:
-                                isDarkMode ? Colors.white : const Color(0xFF1A1A1A),
+                            foregroundColor: isDarkMode
+                                ? Colors.white
+                                : const Color(0xFF1A1A1A),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),

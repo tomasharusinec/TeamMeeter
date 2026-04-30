@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import '../models/group.dart';
 import '../models/role.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 
 class CreateActivityDialog extends StatefulWidget {
   final List<Group> groups;
@@ -118,9 +119,9 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
   Future<void> _createActivity() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Zadajte názov aktivity')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Zadajte názov aktivity')));
       return;
     }
 
@@ -147,29 +148,52 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
             // Role assignment is optional, don't fail the whole creation
           }
         }
+        final queued = result['queued'] == true;
+        if (mounted) {
+          Navigator.pop(context);
+          widget.onActivityCreated?.call();
+          context.showLatestSnackBar(
+            SnackBar(
+              content: Text(
+                queued
+                    ? 'Aktivita uložená offline. Po pripojení sa zosynchronizuje.'
+                    : 'Aktivita bola vytvorená',
+              ),
+              backgroundColor: queued
+                  ? const Color(0xFFEF6C00)
+                  : const Color(0xFF2E7D32),
+            ),
+          );
+        }
       } else {
         // Individual activity
-        await api.createIndividualActivity(
+        final result = await api.createIndividualActivity(
           name: name,
           deadline: deadlineStr,
         );
-      }
-
-      if (mounted) {
-        Navigator.pop(context);
-        widget.onActivityCreated?.call();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Aktivita bola vytvorená'),
-            backgroundColor: Color(0xFF2E7D32),
-          ),
-        );
+        final queued = result['queued'] == true;
+        if (mounted) {
+          Navigator.pop(context);
+          widget.onActivityCreated?.call();
+          context.showLatestSnackBar(
+            SnackBar(
+              content: Text(
+                queued
+                    ? 'Aktivita uložená offline. Po pripojení sa zosynchronizuje.'
+                    : 'Aktivita bola vytvorená',
+              ),
+              backgroundColor: queued
+                  ? const Color(0xFFEF6C00)
+                  : const Color(0xFF2E7D32),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => _isCreating = false);
@@ -248,7 +272,9 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF5F0F0),
                       borderRadius: BorderRadius.circular(20),
@@ -296,14 +322,22 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                     child: DropdownButton<Group?>(
                       value: _selectedGroup,
                       isExpanded: true,
-                      hint: const Text('Individuálna',
-                          style: TextStyle(
-                              color: Color(0xFF999999), fontSize: 14)),
+                      hint: const Text(
+                        'Individuálna',
+                        style: TextStyle(
+                          color: Color(0xFF999999),
+                          fontSize: 14,
+                        ),
+                      ),
                       dropdownColor: const Color(0xFFF5F0F0),
-                      icon: const Icon(Icons.arrow_drop_down,
-                          color: Color(0xFF666666)),
+                      icon: const Icon(
+                        Icons.arrow_drop_down,
+                        color: Color(0xFF666666),
+                      ),
                       style: const TextStyle(
-                          color: Color(0xFF333333), fontSize: 14),
+                        color: Color(0xFF333333),
+                        fontSize: 14,
+                      ),
                       items: [
                         const DropdownMenuItem<Group?>(
                           value: null,
@@ -365,15 +399,22 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                             child: DropdownButton<Role?>(
                               value: _selectedRole,
                               isExpanded: true,
-                              hint: const Text('Žiadna rola',
-                                  style: TextStyle(
-                                      color: Color(0xFF999999),
-                                      fontSize: 14)),
+                              hint: const Text(
+                                'Žiadna rola',
+                                style: TextStyle(
+                                  color: Color(0xFF999999),
+                                  fontSize: 14,
+                                ),
+                              ),
                               dropdownColor: const Color(0xFFF5F0F0),
-                              icon: const Icon(Icons.arrow_drop_down,
-                                  color: Color(0xFF666666)),
+                              icon: const Icon(
+                                Icons.arrow_drop_down,
+                                color: Color(0xFF666666),
+                              ),
                               style: const TextStyle(
-                                  color: Color(0xFF333333), fontSize: 14),
+                                color: Color(0xFF333333),
+                                fontSize: 14,
+                              ),
                               items: [
                                 const DropdownMenuItem<Role?>(
                                   value: null,
@@ -389,7 +430,8 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                                             width: 12,
                                             height: 12,
                                             margin: const EdgeInsets.only(
-                                                right: 8),
+                                              right: 8,
+                                            ),
                                             decoration: BoxDecoration(
                                               color: _parseColor(r.color!),
                                               shape: BoxShape.circle,
@@ -479,8 +521,10 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
           borderRadius: BorderRadius.circular(20),
           borderSide: BorderSide.none,
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
     );
   }

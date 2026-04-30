@@ -4,6 +4,7 @@ import '../models/group.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 import 'group_basic_information_screen.dart';
 import 'group_invites_screen.dart';
 import 'group_members_screen.dart';
@@ -53,7 +54,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -106,7 +107,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isDeleting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -119,7 +120,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final currentUserId = auth.user?.idRegistration;
     if (currentUserId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         const SnackBar(
           content: Text('Unable to identify current user'),
           backgroundColor: Color(0xFF8B1A2C),
@@ -174,7 +175,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLeaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -212,8 +213,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               children: [
                 Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 18,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A0A0A).withAlpha(190),
                     borderRadius: BorderRadius.circular(16),
@@ -258,7 +261,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => GroupBasicInformationScreen(
-                          groupId: widget.group.idGroup,
+                          groupId: shownGroup.idGroup,
                         ),
                       ),
                     );
@@ -275,7 +278,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => GroupMembersScreen(
-                          groupId: widget.group.idGroup,
+                          groupId: shownGroup.idGroup,
                           groupName: shownGroup.name,
                         ),
                       ),
@@ -291,21 +294,23 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   icon: Icons.security_outlined,
                   onPressed: () async {
                     try {
-                      await api.getGroupRoles(widget.group.idGroup);
+                      await api.getGroupRoles(shownGroup.idGroup);
                       if (!mounted) return;
                       await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => GroupRolesScreen(
-                            groupId: widget.group.idGroup,
+                            groupId: shownGroup.idGroup,
                             groupName: shownGroup.name,
                           ),
                         ),
                       );
                     } catch (e) {
                       if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      context.showLatestSnackBar(
                         SnackBar(
-                          content: Text(e.toString().replaceAll('Exception: ', '')),
+                          content: Text(
+                            e.toString().replaceAll('Exception: ', ''),
+                          ),
                           backgroundColor: const Color(0xFF8B1A2C),
                         ),
                       );
@@ -319,11 +324,14 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   onPressed: () => _openIfAuthorized(
                     title: 'Chat',
                     accessCheck: () async {
-                      final details = _fullGroup ??
-                          await api.getGroupDetails(widget.group.idGroup);
+                      final details =
+                          _fullGroup ??
+                          await api.getGroupDetails(shownGroup.idGroup);
                       final conversationId = details.conversationId;
                       if (conversationId == null) {
-                        throw Exception('Chat pre túto skupinu nie je dostupný');
+                        throw Exception(
+                          'Chat pre túto skupinu nie je dostupný',
+                        );
                       }
                       await api.getConversation(conversationId);
                     },
@@ -337,7 +345,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => GroupInvitesScreen(
-                          groupId: widget.group.idGroup,
+                          groupId: shownGroup.idGroup,
                           groupName: shownGroup.name,
                           initialInviteCode: shownGroup.qrCode,
                         ),
@@ -406,7 +414,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFE57373),
-                      side: const BorderSide(color: Color(0xFFE57373), width: 1.4),
+                      side: const BorderSide(
+                        color: Color(0xFFE57373),
+                        width: 1.4,
+                      ),
                       backgroundColor: const Color(0xFF1A0A0A).withAlpha(120),
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       shape: RoundedRectangleBorder(
@@ -447,7 +458,10 @@ class _OptionButton extends StatelessWidget {
             Expanded(
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             const Icon(Icons.chevron_right_rounded, color: Colors.white60),
@@ -459,7 +473,9 @@ class _OptionButton extends StatelessWidget {
           elevation: 0,
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
           side: BorderSide(color: Colors.white.withAlpha(20)),
         ),
       ),
@@ -504,7 +520,9 @@ class _GroupAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     final imageUrl = '${ApiService.baseUrl}/groups/$groupId/icon';
+    final canLoadNetworkIcon = groupId > 0 && hasIcon && token != null;
     return GestureDetector(
       onTap: () {
         showDialog(
@@ -524,32 +542,43 @@ class _GroupAvatar extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: hasIcon && token != null
-                        ? Image.network(
+                    child: FutureBuilder(
+                      future: api.getCachedGroupIconBytes(groupId),
+                      builder: (context, snapshot) {
+                        final cachedBytes = snapshot.data;
+                        if (cachedBytes != null && cachedBytes.isNotEmpty) {
+                          return Image.memory(cachedBytes, fit: BoxFit.contain);
+                        }
+                        if (canLoadNetworkIcon) {
+                          return Image.network(
                             imageUrl,
                             fit: BoxFit.contain,
                             headers: {'Authorization': 'Bearer $token'},
-                            errorBuilder: (_, __, ___) => const SizedBox(
-                              height: 220,
-                              child: Center(
-                                child: Icon(
-                                  Icons.groups_rounded,
-                                  color: Colors.white70,
-                                  size: 72,
+                            errorBuilder: (_, error, stackTrace) =>
+                                const SizedBox(
+                                  height: 220,
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.groups_rounded,
+                                      color: Colors.white70,
+                                      size: 72,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          )
-                        : const SizedBox(
-                            height: 220,
-                            child: Center(
-                              child: Icon(
-                                Icons.groups_rounded,
-                                color: Colors.white70,
-                                size: 72,
-                              ),
+                          );
+                        }
+                        return const SizedBox(
+                          height: 220,
+                          child: Center(
+                            child: Icon(
+                              Icons.groups_rounded,
+                              color: Colors.white70,
+                              size: 72,
                             ),
                           ),
+                        );
+                      },
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextButton(
@@ -571,22 +600,32 @@ class _GroupAvatar extends StatelessWidget {
           color: const Color(0xFF2A1111),
         ),
         clipBehavior: Clip.antiAlias,
-        child: hasIcon && token != null
-            ? Image.network(
+        child: FutureBuilder(
+          future: api.getCachedGroupIconBytes(groupId),
+          builder: (context, snapshot) {
+            final cachedBytes = snapshot.data;
+            if (cachedBytes != null && cachedBytes.isNotEmpty) {
+              return Image.memory(cachedBytes, fit: BoxFit.cover);
+            }
+            if (canLoadNetworkIcon) {
+              return Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
                 headers: {'Authorization': 'Bearer $token'},
-                errorBuilder: (_, __, ___) => const Icon(
+                errorBuilder: (_, error, stackTrace) => const Icon(
                   Icons.groups_rounded,
                   color: Colors.white70,
                   size: 28,
                 ),
-              )
-            : const Icon(
-                Icons.groups_rounded,
-                color: Colors.white70,
-                size: 28,
-              ),
+              );
+            }
+            return const Icon(
+              Icons.groups_rounded,
+              color: Colors.white70,
+              size: 28,
+            );
+          },
+        ),
       ),
     );
   }

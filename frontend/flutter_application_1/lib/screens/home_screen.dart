@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -8,6 +10,7 @@ import '../providers/theme_provider.dart';
 import '../services/permission_service.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../utils/snackbar_utils.dart';
 import '../models/activity.dart';
 import '../models/group.dart';
 import 'activity_detail_dialog.dart';
@@ -22,7 +25,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentNavIndex = 1; // Home is center/default
   List<Activity> _activities = [];
   List<Group> _groups = [];
@@ -30,15 +33,38 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isGroupsLoading = false;
   bool _isUpdatingActivityStatus = false;
   bool _isCreatingGroup = false;
+  bool _showOfflineBanner = false;
+  bool _hasPendingSync = false;
+  Timer? _offlineSyncTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadData();
+    _refreshOfflineBannerState();
+    _offlineSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      await _runOfflineSyncInBackground();
+      await _refreshOfflineBannerState();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       authProvider.ensureCurrentUserLoaded();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _offlineSyncTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _runOfflineSyncInBackground();
+    }
   }
 
   Future<void> _loadData() async {
@@ -47,7 +73,35 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadActivities(showError: false),
       _loadGroups(showError: false),
     ]);
+    await _refreshOfflineBannerState();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _refreshOfflineBannerState() async {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+    final pending = await api.getPendingOfflineChangesCount();
+    final reachable = await api.isServerReachable();
+    if (!mounted) return;
+    setState(() {
+      _hasPendingSync = pending > 0;
+      _showOfflineBanner = !reachable;
+    });
+  }
+
+  Future<void> _runOfflineSyncInBackground() async {
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final pendingBefore = await api.getPendingOfflineChangesCount();
+      await api.syncPendingActivityOperations();
+      final pendingAfter = await api.getPendingOfflineChangesCount();
+      final reachable = await api.isServerReachable();
+      final syncedSomething = pendingAfter < pendingBefore;
+      if (reachable && syncedSomething && mounted) {
+        await _loadActivities(showError: false);
+        await _loadGroups(showError: false, silent: true);
+      }
+      await _refreshOfflineBannerState();
+    } catch (_) {}
   }
 
   Future<void> _loadActivities({bool showError = true}) async {
@@ -58,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _activities = activities);
     } catch (e) {
       if (!mounted || !showError) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -67,23 +121,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadGroups({bool showError = true}) async {
-    if (mounted) setState(() => _isGroupsLoading = true);
+  Future<void> _loadGroups({bool showError = true, bool silent = false}) async {
+    if (!silent && mounted) setState(() => _isGroupsLoading = true);
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final api = authProvider.apiService;
       final groups = await api.getGroups();
       if (mounted) setState(() => _groups = groups);
+      await _refreshOfflineBannerState();
     } catch (e) {
       if (!mounted || !showError) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } finally {
-      if (mounted) setState(() => _isGroupsLoading = false);
+      if (!silent && mounted) setState(() => _isGroupsLoading = false);
     }
   }
 
@@ -117,20 +172,43 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             children: [
               _buildTopBar(),
+              if (_showOfflineBanner) _buildOfflineSyncBanner(),
               Expanded(
                 child: _currentNavIndex == 3
                     ? _buildGroupsView()
                     : _currentNavIndex == 2
-                        ? _buildChatView()
-                        : _currentNavIndex == 0
-                            ? _buildCalendarView()
-                            : _buildTasksView(),
+                    ? _buildChatView()
+                    : _currentNavIndex == 0
+                    ? _buildCalendarView()
+                    : _buildTasksView(),
               ),
             ],
           ),
         ),
       ),
       bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildOfflineSyncBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF6C00).withAlpha(220),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        _hasPendingSync
+            ? 'Offline režim: čaká sa na synchronizáciu'
+            : 'Offline režim',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
@@ -149,8 +227,11 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () {},
             icon: Stack(
               children: [
-                const Icon(Icons.notifications_outlined,
-                    color: Colors.white, size: 28),
+                const Icon(
+                  Icons.notifications_outlined,
+                  color: Colors.white,
+                  size: 28,
+                ),
                 Positioned(
                   right: 0,
                   top: 0,
@@ -171,10 +252,10 @@ class _HomeScreenState extends State<HomeScreen> {
               _currentNavIndex == 3
                   ? 'My groups'
                   : _currentNavIndex == 2
-                      ? 'Chat'
-                      : _currentNavIndex == 0
-                          ? 'Calendar'
-                          : 'My tasks',
+                  ? 'Chat'
+                  : _currentNavIndex == 0
+                  ? 'Calendar'
+                  : 'My tasks',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
@@ -185,7 +266,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             onPressed: themeProvider.toggleTheme,
-            tooltip: isDarkMode ? 'Switch to light mode' : 'Switch to dark mode',
+            tooltip: isDarkMode
+                ? 'Switch to light mode'
+                : 'Switch to dark mode',
             icon: Icon(
               isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
               color: Colors.white,
@@ -219,15 +302,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildTasksView() {
     if (_isLoading) {
       return const Center(
-          child: CircularProgressIndicator(color: Colors.white));
+        child: CircularProgressIndicator(color: Colors.white),
+      );
     }
 
-    final todoActivities =
-        _activities.where((a) => a.status == 'todo').toList();
-    final inProgressActivities =
-        _activities.where((a) => a.status == 'in_progress').toList();
-    final completedActivities =
-        _activities.where((a) => a.status == 'completed').toList();
+    final todoActivities = _activities
+        .where((a) => a.status == 'todo')
+        .toList();
+    final inProgressActivities = _activities
+        .where((a) => a.status == 'in_progress')
+        .toList();
+    final completedActivities = _activities
+        .where((a) => a.status == 'completed')
+        .toList();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -272,8 +359,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   side: BorderSide(color: Colors.white.withAlpha(26)),
                 ),
               ),
-              child: const Text('View completed tasks',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400)),
+              child: const Text(
+                'View completed tasks',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400),
+              ),
             ),
           ),
         ],
@@ -313,8 +402,10 @@ class _HomeScreenState extends State<HomeScreen> {
               // Column header
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 16,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF2D1515),
                   borderRadius: const BorderRadius.only(
@@ -344,7 +435,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? 'No tasks yet'
                               : 'No tasks in progress',
                           style: const TextStyle(
-                              color: Colors.white38, fontSize: 12),
+                            color: Colors.white38,
+                            fontSize: 12,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       )
@@ -374,10 +467,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      childWhenDragging: Opacity(
-        opacity: 0.3,
-        child: _buildTaskCard(activity),
-      ),
+      childWhenDragging: Opacity(opacity: 0.3, child: _buildTaskCard(activity)),
       child: GestureDetector(
         onTap: () => _showActivityDetail(activity),
         child: _buildTaskCard(activity),
@@ -421,10 +511,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 2),
             Text(
               activity.formattedDeadline,
-              style: const TextStyle(
-                color: Color(0xFF888888),
-                fontSize: 10,
-              ),
+              style: const TextStyle(color: Color(0xFF888888), fontSize: 10),
             ),
           ],
         ],
@@ -435,10 +522,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showActivityDetail(Activity activity) {
     showDialog(
       context: context,
-      builder: (context) => ActivityDetailDialog(
-        activity: activity,
-        onDeleted: _loadData,
-      ),
+      builder: (context) =>
+          ActivityDetailDialog(activity: activity, onDeleted: _loadData),
     );
   }
 
@@ -450,7 +535,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadActivities(showError: false);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -530,10 +615,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Groups View ──────────────────────────────────────────
   Widget _buildCalendarView() {
-    return CalendarScreen(
-      groups: _groups,
-      onDataChanged: _loadData,
-    );
+    return CalendarScreen(groups: _groups, onDataChanged: _loadData);
   }
 
   Widget _buildChatView() {
@@ -548,7 +630,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildGroupsView() {
     if (_isLoading || _isGroupsLoading) {
       return const Center(
-          child: CircularProgressIndicator(color: Colors.white));
+        child: CircularProgressIndicator(color: Colors.white),
+      );
     }
 
     return Stack(
@@ -561,12 +644,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.all(16),
                   children: [
                     const SizedBox(height: 120),
-                    Icon(Icons.group_outlined,
-                        size: 64, color: Colors.white.withAlpha(77)),
+                    Icon(
+                      Icons.group_outlined,
+                      size: 64,
+                      color: Colors.white.withAlpha(77),
+                    ),
                     const SizedBox(height: 16),
-                    const Text('No groups yet',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white38)),
+                    const Text(
+                      'No groups yet',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white38),
+                    ),
                   ],
                 )
               : ListView.builder(
@@ -632,8 +720,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           elevation: 0,
-          backgroundColor:
-              isPrimary ? const Color(0xFF8B1A2C) : const Color(0xFF2A1111),
+          backgroundColor: isPrimary
+              ? const Color(0xFF8B1A2C)
+              : const Color(0xFF2A1111),
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -660,30 +749,32 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListTile(
         onTap: () async {
           await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => GroupDetailScreen(group: group),
-            ),
+            MaterialPageRoute(builder: (_) => GroupDetailScreen(group: group)),
           );
           if (mounted) {
             _loadData();
           }
         },
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: _GroupListAvatar(
           groupId: group.idGroup,
           hasIcon: group.hasIcon,
-          fallbackLetter: group.name.isNotEmpty ? group.name[0].toUpperCase() : '?',
+          fallbackLetter: group.name.isNotEmpty
+              ? group.name[0].toUpperCase()
+              : '?',
         ),
-        title: Text(group.name,
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w500)),
+        title: Text(
+          group.name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         subtitle: Text(
           group.createDate ?? '',
           style: const TextStyle(color: Colors.white38, fontSize: 12),
         ),
-        trailing:
-            const Icon(Icons.chevron_right, color: Colors.white38),
+        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
       ),
     );
   }
@@ -693,8 +784,10 @@ class _HomeScreenState extends State<HomeScreen> {
     required bool hasIcon,
     required String fallbackLetter,
   }) {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     final token = Provider.of<AuthProvider>(context, listen: false).token;
     final imageUrl = '${ApiService.baseUrl}/groups/$groupId/icon';
+    final canLoadNetworkIcon = groupId > 0 && hasIcon && token != null;
 
     return Container(
       width: 44,
@@ -704,8 +797,15 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
-      child: hasIcon && token != null
-          ? Image.network(
+      child: FutureBuilder(
+        future: api.getCachedGroupIconBytes(groupId),
+        builder: (context, snapshot) {
+          final cachedBytes = snapshot.data;
+          if (cachedBytes != null && cachedBytes.isNotEmpty) {
+            return Image.memory(cachedBytes, fit: BoxFit.cover);
+          }
+          if (canLoadNetworkIcon) {
+            return Image.network(
               imageUrl,
               fit: BoxFit.cover,
               headers: {'Authorization': 'Bearer $token'},
@@ -719,17 +819,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-            )
-          : Center(
-              child: Text(
-                fallbackLetter,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+            );
+          }
+          return Center(
+            child: Text(
+              fallbackLetter,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
             ),
+          );
+        },
+      ),
     );
   }
 
@@ -740,7 +843,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final user = authProvider.user;
     final token = authProvider.token;
-    final hasPicture = user?.hasProfilePicture ?? false;
+    final localPath = authProvider.localProfilePhotoPath;
+    final hasLocalImage = localPath != null && File(localPath).existsSync();
+    final hasPicture =
+        !authProvider.localProfilePhotoRemoved &&
+        (user?.hasProfilePicture ?? false);
+    if (hasLocalImage) {
+      return Image.file(File(localPath), fit: BoxFit.cover);
+    }
     if (hasPicture && token != null) {
       return Image.network(
         '${ApiService.baseUrl}/users/me/profile-picture',
@@ -799,8 +909,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 64,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border:
-                    Border.all(color: const Color(0xFF8B1A2C), width: 2),
+                border: Border.all(color: const Color(0xFF8B1A2C), width: 2),
                 color: const Color(0xFF2D1515),
               ),
               clipBehavior: Clip.antiAlias,
@@ -835,8 +944,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                   if (!mounted) return;
-                  await Provider.of<AuthProvider>(this.context, listen: false)
-                      .refreshCurrentUser();
+                  await Provider.of<AuthProvider>(
+                    this.context,
+                    listen: false,
+                  ).refreshCurrentUser();
                 },
                 icon: const Icon(Icons.tune),
                 label: const Text('Upraviť vzhľad profilu'),
@@ -864,7 +975,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   backgroundColor: const Color(0xFF8B1A2C),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
@@ -915,11 +1027,11 @@ class _HomeScreenState extends State<HomeScreen> {
             OutlinedButton.icon(
               onPressed: () async {
                 final scannedCode = await Navigator.of(context).push<String>(
-                  MaterialPageRoute(
-                    builder: (_) => const _QrScannerScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const _QrScannerScreen()),
                 );
-                if (!context.mounted || scannedCode == null || scannedCode.isEmpty) {
+                if (!context.mounted ||
+                    scannedCode == null ||
+                    scannedCode.isEmpty) {
                   return;
                 }
                 codeController.text = scannedCode;
@@ -971,7 +1083,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }) async {
     final code = inviteCode.trim();
     if (code.isEmpty) {
-      ScaffoldMessenger.of(this.context).showSnackBar(
+      this.context.showLatestSnackBar(
         const SnackBar(
           content: Text('Please enter an invite code'),
           backgroundColor: Color(0xFF8B1A2C),
@@ -982,21 +1094,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      await api.joinGroupByInviteCode(code);
+      final queued = await api.joinGroupByInviteCode(code);
       if (dialogContext != null && dialogContext.mounted) {
         Navigator.pop(dialogContext);
       }
       await _loadGroups();
       if (!mounted) return;
-      ScaffoldMessenger.of(this.context).showSnackBar(
-        const SnackBar(
-          content: Text('Joined group successfully'),
-          backgroundColor: Color(0xFF8B1A2C),
+      this.context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            queued
+                ? 'Požiadavka na pripojenie je uložená offline a odošle sa po pripojení.'
+                : 'Joined group successfully',
+          ),
+          backgroundColor: queued
+              ? const Color(0xFFEF6C00)
+              : const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(this.context).showSnackBar(
+      this.context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -1016,7 +1134,8 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: AppColors.dialogBackground(context),
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Text(
             'Create Group',
             style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
@@ -1026,7 +1145,9 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               TextField(
                 controller: nameController,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Group name',
                   hintText: 'Enter group name',
@@ -1042,8 +1163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        BorderSide(color: Colors.white.withAlpha(51)),
+                    borderSide: BorderSide(color: Colors.white.withAlpha(51)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1055,7 +1175,9 @@ class _HomeScreenState extends State<HomeScreen> {
               TextField(
                 controller: capacityController,
                 keyboardType: TextInputType.number,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Group capacity',
                   hintText: 'Max number of members',
@@ -1071,8 +1193,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        BorderSide(color: Colors.white.withAlpha(51)),
+                    borderSide: BorderSide(color: Colors.white.withAlpha(51)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1088,7 +1209,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 checkColor: Colors.white,
                 title: Text(
                   'Generate invite QR code',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
                 subtitle: Text(
                   'Other users can join using this code.',
@@ -1121,70 +1244,98 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: _isCreatingGroup
                   ? null
                   : () async {
-                final groupName = nameController.text.trim();
-                final capacityText = capacityController.text.trim();
-                final capacity = int.tryParse(capacityText);
+                      final groupName = nameController.text.trim();
+                      final capacityText = capacityController.text.trim();
+                      final capacity = int.tryParse(capacityText);
 
-                if (groupName.isNotEmpty && capacity != null && capacity > 0) {
-                  try {
-                    if (mounted) setState(() => _isCreatingGroup = true);
-                    final api = Provider.of<AuthProvider>(
-                      parentContext,
-                      listen: false,
-                    ).apiService;
-                    final response = await api.createGroup(
-                      groupName,
-                      capacity: capacity,
-                      generateQr: generateQr,
-                    );
-                    FocusScope.of(context).unfocus();
-                    if (context.mounted) Navigator.of(context).pop();
-                    final qrCode = response['qr_code']?.toString();
-                    if (!mounted) return;
-                    if (generateQr && qrCode != null && qrCode.isNotEmpty) {
-                      ScaffoldMessenger.of(parentContext).showSnackBar(
-                        SnackBar(
-                          content: const Text('Group created. QR code is ready.'),
-                          backgroundColor: const Color(0xFF8B1A2C),
-                          action: SnackBarAction(
-                            label: 'Show QR',
-                            textColor: Colors.white,
-                            onPressed: () => _showCreatedGroupQrDialog(qrCode),
+                      if (groupName.isNotEmpty &&
+                          capacity != null &&
+                          capacity > 0) {
+                        try {
+                          if (mounted) setState(() => _isCreatingGroup = true);
+                          final api = Provider.of<AuthProvider>(
+                            parentContext,
+                            listen: false,
+                          ).apiService;
+                          final currentUser = Provider.of<AuthProvider>(
+                            parentContext,
+                            listen: false,
+                          ).user;
+                          final response = await api.createGroup(
+                            groupName,
+                            capacity: capacity,
+                            generateQr: generateQr,
+                            creatorUserId: currentUser?.idRegistration,
+                            creatorUsername: currentUser?.username,
+                            creatorName: currentUser?.name,
+                            creatorSurname: currentUser?.surname,
+                          );
+                          FocusScope.of(context).unfocus();
+                          if (context.mounted) Navigator.of(context).pop();
+                          final qrCode = response['qr_code']?.toString();
+                          final queued = response['queued'] == true;
+                          if (!mounted) return;
+                          if (generateQr &&
+                              qrCode != null &&
+                              qrCode.isNotEmpty &&
+                              !queued) {
+                            parentContext.showLatestSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                  'Group created. QR code is ready.',
+                                ),
+                                backgroundColor: const Color(0xFF8B1A2C),
+                                action: SnackBarAction(
+                                  label: 'Show QR',
+                                  textColor: Colors.white,
+                                  onPressed: () =>
+                                      _showCreatedGroupQrDialog(qrCode),
+                                ),
+                              ),
+                            );
+                          }
+                          if (queued) {
+                            parentContext.showLatestSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Skupina bola uložená offline. Po pripojení sa zosynchronizuje.',
+                                ),
+                                backgroundColor: Color(0xFFEF6C00),
+                              ),
+                            );
+                          }
+                          _loadGroups();
+                        } catch (e) {
+                          if (mounted) {
+                            parentContext.showLatestSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  e.toString().replaceAll('Exception: ', ''),
+                                ),
+                                backgroundColor: const Color(0xFF8B1A2C),
+                              ),
+                            );
+                          }
+                        } finally {
+                          if (mounted) setState(() => _isCreatingGroup = false);
+                        }
+                      } else {
+                        parentContext.showLatestSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Please enter a group name and valid capacity (> 0)',
+                            ),
+                            backgroundColor: Color(0xFF8B1A2C),
                           ),
-                        ),
-                      );
-                    }
-                    _loadGroups();
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(parentContext).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            e.toString().replaceAll('Exception: ', ''),
-                          ),
-                          backgroundColor: const Color(0xFF8B1A2C),
-                        ),
-                      );
-                    }
-                  } finally {
-                    if (mounted) setState(() => _isCreatingGroup = false);
-                  }
-                } else {
-                  ScaffoldMessenger.of(parentContext).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Please enter a group name and valid capacity (> 0)',
-                      ),
-                      backgroundColor: Color(0xFF8B1A2C),
-                    ),
-                  );
-                }
-              },
+                        );
+                      }
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF8B1A2C),
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: _isCreatingGroup
                   ? const SizedBox(
@@ -1205,9 +1356,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _showCreatedGroupQrDialog(String qrCode) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _GroupQrCodeScreen(qrCode: qrCode),
-      ),
+      MaterialPageRoute(builder: (_) => _GroupQrCodeScreen(qrCode: qrCode)),
     );
   }
 
@@ -1216,9 +1365,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF0D0D0D),
-        border: Border(
-          top: BorderSide(color: Colors.white.withAlpha(26)),
-        ),
+        border: Border(top: BorderSide(color: Colors.white.withAlpha(26))),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 32),
@@ -1235,8 +1382,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildNavItem(IconData icon, int index,
-      {bool isCenter = false}) {
+  Widget _buildNavItem(IconData icon, int index, {bool isCenter = false}) {
     final isActive = _currentNavIndex == index;
     return GestureDetector(
       onTap: () {
@@ -1328,7 +1474,7 @@ class _GroupQrCodeScreen extends StatelessWidget {
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: qrCode));
                 if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
+                context.showLatestSnackBar(
                   const SnackBar(
                     content: Text('Invite code copied'),
                     backgroundColor: Color(0xFF8B1A2C),
@@ -1439,36 +1585,34 @@ class _QrScannerScreenState extends State<_QrScannerScreen> {
               ),
             )
           : !_scannerReady
-              ? const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                )
-              : Stack(
-                  children: [
-                    MobileScanner(
-                      controller: _controller,
-                      onDetect: (capture) {
-                        if (_handledScan) return;
-                        final value = capture.barcodes.first.rawValue;
-                        if (value == null || value.trim().isEmpty) return;
-                        _handledScan = true;
-                        Navigator.of(context).pop(value.trim());
-                      },
-                    ),
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Container(
-                        width: double.infinity,
-                        color: Colors.black.withAlpha(120),
-                        padding: const EdgeInsets.all(16),
-                        child: const Text(
-                          'Align the QR code inside camera view',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          : Stack(
+              children: [
+                MobileScanner(
+                  controller: _controller,
+                  onDetect: (capture) {
+                    if (_handledScan) return;
+                    final value = capture.barcodes.first.rawValue;
+                    if (value == null || value.trim().isEmpty) return;
+                    _handledScan = true;
+                    Navigator.of(context).pop(value.trim());
+                  },
                 ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                    width: double.infinity,
+                    color: Colors.black.withAlpha(120),
+                    padding: const EdgeInsets.all(16),
+                    child: const Text(
+                      'Align the QR code inside camera view',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

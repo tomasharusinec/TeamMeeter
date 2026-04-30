@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/permission_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/snackbar_utils.dart';
 
 class GroupBasicInformationScreen extends StatefulWidget {
   final int groupId;
@@ -55,7 +56,7 @@ class _GroupBasicInformationScreenState
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -71,22 +72,28 @@ class _GroupBasicInformationScreenState
     setState(() => _isSaving = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final beforeQueue = await api.getPendingOfflineChangesCount();
       await api.updateGroup(
         groupId: _group!.idGroup,
         name: _nameController.text.trim(),
         capacity: int.parse(_capacityController.text.trim()),
       );
+      final afterQueue = await api.getPendingOfflineChangesCount();
       if (!mounted) return;
       await _load();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Group updated successfully'),
-          backgroundColor: Color(0xFF8B1A2C),
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            afterQueue > beforeQueue
+                ? 'Zmeny skupiny sú uložené offline.'
+                : 'Group updated successfully',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -107,7 +114,7 @@ class _GroupBasicInformationScreenState
     final hasPermission = await PermissionService.ensureGalleryPermission();
     if (!hasPermission) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         const SnackBar(
           content: Text('Povoľ prístup ku galérii v nastaveniach aplikácie.'),
           backgroundColor: Color(0xFF8B1A2C),
@@ -123,21 +130,27 @@ class _GroupBasicInformationScreenState
     setState(() => _isIconLoading = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final beforeQueue = await api.getPendingOfflineChangesCount();
       await api.uploadGroupIcon(
         groupId: _group!.idGroup,
         imageFile: File(picked.path),
       );
+      final afterQueue = await api.getPendingOfflineChangesCount();
       if (!mounted) return;
       await _load();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Group icon uploaded successfully'),
-          backgroundColor: Color(0xFF8B1A2C),
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            afterQueue > beforeQueue
+                ? 'Nahratie ikony skupiny je uložené offline.'
+                : 'Group icon uploaded successfully',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -153,18 +166,24 @@ class _GroupBasicInformationScreenState
     setState(() => _isIconLoading = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final beforeQueue = await api.getPendingOfflineChangesCount();
       await api.deleteGroupIcon(_group!.idGroup);
+      final afterQueue = await api.getPendingOfflineChangesCount();
       if (!mounted) return;
       await _load();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Group icon removed successfully'),
-          backgroundColor: Color(0xFF8B1A2C),
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            afterQueue > beforeQueue
+                ? 'Odstránenie ikony skupiny je uložené offline.'
+                : 'Group icon removed successfully',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
           backgroundColor: const Color(0xFF8B1A2C),
@@ -200,234 +219,246 @@ class _GroupBasicInformationScreenState
                   child: CircularProgressIndicator(color: Colors.white),
                 )
               : _group == null
-                  ? const Center(
-                      child: Text(
-                        'Unable to load group information',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: ListView(
-                                children: [
-                                  Container(
-                                    width: double.infinity,
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 16),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF2A1111),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                          color: Colors.white.withAlpha(20)),
+              ? const Center(
+                  child: Text(
+                    'Unable to load group information',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: ListView(
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF2A1111),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.white.withAlpha(20),
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    _GroupIconPreview(
+                                      groupId: _group!.idGroup,
+                                      hasIcon: _group!.hasIcon,
+                                      token: token,
                                     ),
-                                    child: Column(
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _group!.hasIcon
+                                          ? 'Group icon'
+                                          : 'No icon uploaded yet',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      alignment: WrapAlignment.center,
                                       children: [
-                                        _GroupIconPreview(
-                                          groupId: _group!.idGroup,
-                                          hasIcon: _group!.hasIcon,
-                                          token: token,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          _group!.hasIcon
-                                              ? 'Group icon'
-                                              : 'No icon uploaded yet',
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Wrap(
-                                          spacing: 10,
-                                          runSpacing: 10,
-                                          alignment: WrapAlignment.center,
-                                          children: [
-                                            ElevatedButton.icon(
-                                              onPressed: _isIconLoading
-                                                  ? null
-                                                  : _pickAndUploadIcon,
-                                              icon: _isIconLoading
-                                                  ? const SizedBox(
-                                                      width: 14,
-                                                      height: 14,
-                                                      child:
-                                                          CircularProgressIndicator(
+                                        ElevatedButton.icon(
+                                          onPressed: _isIconLoading
+                                              ? null
+                                              : _pickAndUploadIcon,
+                                          icon: _isIconLoading
+                                              ? const SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child:
+                                                      CircularProgressIndicator(
                                                         strokeWidth: 2,
                                                         color: Colors.white,
                                                       ),
-                                                    )
-                                                  : const Icon(
-                                                      Icons.upload_rounded),
-                                              label: const Text('Upload icon'),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor:
-                                                    const Color(0xFF8B1A2C),
-                                                foregroundColor: Colors.white,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
+                                                )
+                                              : const Icon(
+                                                  Icons.upload_rounded,
                                                 ),
-                                              ),
+                                          label: const Text('Upload icon'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF8B1A2C,
                                             ),
-                                            OutlinedButton.icon(
-                                              onPressed: (!_group!.hasIcon ||
-                                                      _isIconLoading)
-                                                  ? null
-                                                  : _removeIcon,
-                                              icon:
-                                                  const Icon(Icons.delete_outline),
-                                              label: const Text('Remove icon'),
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor:
-                                                    const Color(0xFFE57373),
-                                                side: const BorderSide(
-                                                  color: Color(0xFFE57373),
-                                                ),
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
-                                                ),
-                                              ),
+                                            foregroundColor: Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
                                             ),
-                                          ],
+                                          ),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed:
+                                              (!_group!.hasIcon ||
+                                                  _isIconLoading)
+                                              ? null
+                                              : _removeIcon,
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                          ),
+                                          label: const Text('Remove icon'),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: const Color(
+                                              0xFFE57373,
+                                            ),
+                                            side: const BorderSide(
+                                              color: Color(0xFFE57373),
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _InfoTile(
-                                    label: 'Group ID',
-                                    value: _group!.idGroup.toString(),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _InfoTile(
-                                    label: 'Created',
-                                    value: _dateLabel(_group!.createDate),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _InfoTile(
-                                    label: 'Conversation ID',
-                                    value: _group!.conversationId?.toString() ?? '-',
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _InfoTile(
-                                    label: 'Current capacity',
-                                    value: _group!.capacity.toString(),
-                                  ),
-                                  const SizedBox(height: 18),
-                                  TextFormField(
-                                    controller: _nameController,
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      labelText: 'Group name',
-                                      labelStyle:
-                                          const TextStyle(color: Colors.white70),
-                                      filled: true,
-                                      fillColor: const Color(0xFF2A1111),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(
-                                            color: Colors.white.withAlpha(26)),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                            color: Color(0xFF8B1A2C)),
-                                      ),
-                                    ),
-                                    validator: (value) {
-                                      if (value == null ||
-                                          value.trim().isEmpty) {
-                                        return 'Name is required';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextFormField(
-                                    controller: _capacityController,
-                                    keyboardType: TextInputType.number,
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      labelText: 'Group capacity',
-                                      labelStyle:
-                                          const TextStyle(color: Colors.white70),
-                                      filled: true,
-                                      fillColor: const Color(0xFF2A1111),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: BorderSide(
-                                            color: Colors.white.withAlpha(26)),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        borderSide: const BorderSide(
-                                            color: Color(0xFF8B1A2C)),
-                                      ),
-                                    ),
-                                    validator: (value) {
-                                      if (value == null || value.trim().isEmpty) {
-                                        return 'Capacity is required';
-                                      }
-                                      final parsed = int.tryParse(value.trim());
-                                      if (parsed == null || parsed < 1) {
-                                        return 'Capacity must be a number greater than 0';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _isSaving ? null : _save,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF8B1A2C),
-                                  foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
+                              const SizedBox(height: 10),
+                              _InfoTile(
+                                label: 'Group ID',
+                                value: _group!.idGroup.toString(),
+                              ),
+                              const SizedBox(height: 10),
+                              _InfoTile(
+                                label: 'Created',
+                                value: _dateLabel(_group!.createDate),
+                              ),
+                              const SizedBox(height: 10),
+                              _InfoTile(
+                                label: 'Conversation ID',
+                                value:
+                                    _group!.conversationId?.toString() ?? '-',
+                              ),
+                              const SizedBox(height: 10),
+                              _InfoTile(
+                                label: 'Current capacity',
+                                value: _group!.capacity.toString(),
+                              ),
+                              const SizedBox(height: 18),
+                              TextFormField(
+                                controller: _nameController,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  labelText: 'Group name',
+                                  labelStyle: const TextStyle(
+                                    color: Colors.white70,
+                                  ),
+                                  filled: true,
+                                  fillColor: const Color(0xFF2A1111),
+                                  border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.white.withAlpha(26),
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF8B1A2C),
+                                    ),
+                                  ),
                                 ),
-                                child: _isSaving
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Save changes',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Name is required';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _capacityController,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  labelText: 'Group capacity',
+                                  labelStyle: const TextStyle(
+                                    color: Colors.white70,
+                                  ),
+                                  filled: true,
+                                  fillColor: const Color(0xFF2A1111),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: Colors.white.withAlpha(26),
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFF8B1A2C),
+                                    ),
+                                  ),
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Capacity is required';
+                                  }
+                                  final parsed = int.tryParse(value.trim());
+                                  if (parsed == null || parsed < 1) {
+                                    return 'Capacity must be a number greater than 0';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _isSaving ? null : _save,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF8B1A2C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                          ],
+                            child: _isSaving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Save changes',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
+                  ),
+                ),
         ),
       ),
     );
@@ -491,7 +522,9 @@ class _GroupIconPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     final imageUrl = '${ApiService.baseUrl}/groups/$groupId/icon';
+    final canLoadNetworkIcon = groupId > 0 && hasIcon && token != null;
     return GestureDetector(
       onTap: () {
         showDialog(
@@ -511,8 +544,15 @@ class _GroupIconPreview extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: hasIcon && token != null
-                        ? Image.network(
+                    child: FutureBuilder(
+                      future: api.getCachedGroupIconBytes(groupId),
+                      builder: (context, snapshot) {
+                        final cachedBytes = snapshot.data;
+                        if (cachedBytes != null && cachedBytes.isNotEmpty) {
+                          return Image.memory(cachedBytes, fit: BoxFit.contain);
+                        }
+                        if (canLoadNetworkIcon) {
+                          return Image.network(
                             imageUrl,
                             fit: BoxFit.contain,
                             headers: {'Authorization': 'Bearer $token'},
@@ -526,17 +566,20 @@ class _GroupIconPreview extends StatelessWidget {
                                 ),
                               ),
                             ),
-                          )
-                        : const SizedBox(
-                            height: 220,
-                            child: Center(
-                              child: Icon(
-                                Icons.groups_rounded,
-                                color: Colors.white70,
-                                size: 72,
-                              ),
+                          );
+                        }
+                        return const SizedBox(
+                          height: 220,
+                          child: Center(
+                            child: Icon(
+                              Icons.groups_rounded,
+                              color: Colors.white70,
+                              size: 72,
                             ),
                           ),
+                        );
+                      },
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextButton(
@@ -558,8 +601,15 @@ class _GroupIconPreview extends StatelessWidget {
           border: Border.all(color: Colors.white.withAlpha(70), width: 1.4),
         ),
         clipBehavior: Clip.antiAlias,
-        child: hasIcon && token != null
-            ? Image.network(
+        child: FutureBuilder(
+          future: api.getCachedGroupIconBytes(groupId),
+          builder: (context, snapshot) {
+            final cachedBytes = snapshot.data;
+            if (cachedBytes != null && cachedBytes.isNotEmpty) {
+              return Image.memory(cachedBytes, fit: BoxFit.cover);
+            }
+            if (canLoadNetworkIcon) {
+              return Image.network(
                 imageUrl,
                 fit: BoxFit.cover,
                 headers: {'Authorization': 'Bearer $token'},
@@ -568,12 +618,15 @@ class _GroupIconPreview extends StatelessWidget {
                   color: Colors.white70,
                   size: 34,
                 ),
-              )
-            : const Icon(
-                Icons.groups_rounded,
-                color: Colors.white70,
-                size: 34,
-              ),
+              );
+            }
+            return const Icon(
+              Icons.groups_rounded,
+              color: Colors.white70,
+              size: 34,
+            );
+          },
+        ),
       ),
     );
   }

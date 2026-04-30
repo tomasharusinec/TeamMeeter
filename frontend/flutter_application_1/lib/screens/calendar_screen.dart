@@ -11,11 +11,7 @@ class CalendarScreen extends StatefulWidget {
   final List<Group> groups;
   final VoidCallback? onDataChanged;
 
-  const CalendarScreen({
-    super.key,
-    required this.groups,
-    this.onDataChanged,
-  });
+  const CalendarScreen({super.key, required this.groups, this.onDataChanged});
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -61,10 +57,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final lastSunday = lastDay.add(Duration(days: 7 - lastDay.weekday));
 
     final weeks = <DateTime>[];
-    var weekStart = DateTime(firstMonday.year, firstMonday.month, firstMonday.day);
+    var weekStart = DateTime(
+      firstMonday.year,
+      firstMonday.month,
+      firstMonday.day,
+    );
     while (!weekStart.isAfter(lastSunday)) {
       final weekEnd = weekStart.add(const Duration(days: 6));
-      final hasDayInMonth = !(weekEnd.isBefore(firstDay) || weekStart.isAfter(lastDay));
+      final hasDayInMonth =
+          !(weekEnd.isBefore(firstDay) || weekStart.isAfter(lastDay));
       if (hasDayInMonth) {
         weeks.add(weekStart);
       }
@@ -90,10 +91,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _changeMonth(int delta) {
-    final candidate = DateTime(_displayedMonth.year, _displayedMonth.month + delta, 1);
+    final candidate = DateTime(
+      _displayedMonth.year,
+      _displayedMonth.month + delta,
+      1,
+    );
     final weeks = _getWeeksForMonth(candidate);
     final now = DateTime.now();
-    final targetWeekIndex = now.year == candidate.year && now.month == candidate.month
+    final targetWeekIndex =
+        now.year == candidate.year && now.month == candidate.month
         ? _findWeekIndexForDate(now, weeks)
         : 0;
 
@@ -108,7 +114,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final nextIndex = _weekIndex + delta;
 
     if (nextIndex < 0) {
-      final prevMonth = DateTime(_displayedMonth.year, _displayedMonth.month - 1, 1);
+      final prevMonth = DateTime(
+        _displayedMonth.year,
+        _displayedMonth.month - 1,
+        1,
+      );
       final prevWeeks = _getWeeksForMonth(prevMonth);
       setState(() {
         _displayedMonth = prevMonth;
@@ -118,7 +128,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     if (nextIndex >= weeks.length) {
-      final nextMonth = DateTime(_displayedMonth.year, _displayedMonth.month + 1, 1);
+      final nextMonth = DateTime(
+        _displayedMonth.year,
+        _displayedMonth.month + 1,
+        1,
+      );
       setState(() {
         _displayedMonth = nextMonth;
         _weekIndex = 0;
@@ -200,7 +214,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     final day = weekStart.add(Duration(days: i));
                     final dayActivities = _getActivitiesForDay(day);
                     final isToday = _isToday(day);
-                    return _buildDayRow(_dayLabels[i], day, dayActivities, isToday);
+                    return _buildDayRow(
+                      _dayLabels[i],
+                      day,
+                      dayActivities,
+                      isToday,
+                    );
                   }),
 
                 const SizedBox(height: 100),
@@ -210,20 +229,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
 
         // FAB
-        Positioned(
-          right: 20,
-          bottom: 20,
-          child: _buildFab(),
-        ),
+        Positioned(right: 20, bottom: 20, child: _buildFab()),
       ],
     );
   }
 
   bool _isToday(DateTime day) {
     final now = DateTime.now();
-    return day.year == now.year &&
-        day.month == now.month &&
-        day.day == now.day;
+    return day.year == now.year && day.month == now.month && day.day == now.day;
   }
 
   String _formatMonthYear(DateTime month) {
@@ -239,7 +252,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       'September',
       'October',
       'November',
-      'December'
+      'December',
     ];
     return '${names[month.month - 1]} ${month.year}';
   }
@@ -256,8 +269,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: BoxDecoration(
-                color: (isDarkMode ? const Color(0xFF1A0A0A) : Colors.white)
-                    .withAlpha(128),
+        color: (isDarkMode ? const Color(0xFF1A0A0A) : Colors.white).withAlpha(
+          128,
+        ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withAlpha(13)),
       ),
@@ -268,11 +282,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
             children: [
               IconButton(
                 onPressed: () => _changeMonth(-1),
-                icon: const Icon(Icons.keyboard_double_arrow_left, color: Colors.white70),
+                icon: const Icon(
+                  Icons.keyboard_double_arrow_left,
+                  color: Colors.white70,
+                ),
                 splashRadius: 20,
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isDarkMode ? const Color(0xFF2D1515) : Colors.white,
                   borderRadius: BorderRadius.circular(12),
@@ -289,7 +309,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               IconButton(
                 onPressed: () => _changeMonth(1),
-                icon: const Icon(Icons.keyboard_double_arrow_right, color: Colors.white70),
+                icon: const Icon(
+                  Icons.keyboard_double_arrow_right,
+                  color: Colors.white70,
+                ),
                 splashRadius: 20,
               ),
             ],
@@ -314,7 +337,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   });
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: isDarkMode ? const Color(0xFF2D1515) : Colors.white,
                     borderRadius: BorderRadius.circular(12),
@@ -323,7 +349,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   child: Text(
                     'Week: $weekNumber',
                     style: TextStyle(
-                      color: isDarkMode ? Colors.white : const Color(0xFF1A1A1A),
+                      color: isDarkMode
+                          ? Colors.white
+                          : const Color(0xFF1A1A1A),
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
@@ -343,7 +371,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildDayRow(
-      String label, DateTime day, List<Activity> activities, bool isToday) {
+    String label,
+    DateTime day,
+    List<Activity> activities,
+    bool isToday,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -353,7 +385,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             width: 56,
             height: 38,
             decoration: BoxDecoration(
-              color: isToday ? const Color(0xFF8B1A2C) : const Color(0xFF2D1515),
+              color: isToday
+                  ? const Color(0xFF8B1A2C)
+                  : const Color(0xFF2D1515),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isToday
@@ -401,8 +435,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Expanded(
             child: Container(
               constraints: const BoxConstraints(minHeight: 38),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFFF5F0F0),
                 borderRadius: BorderRadius.circular(20),
@@ -425,38 +458,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           child: GestureDetector(
                             onTap: () => _showActivityDetail(a),
                             child: Row(
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF8B1A2C),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  a.name,
-                                  style: const TextStyle(
-                                    color: Color(0xFF333333),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (formattedTime.isNotEmpty)
-                                Text(
-                                  formattedTime,
-                                  style: const TextStyle(
-                                    color: Color(0xFF888888),
-                                    fontSize: 10,
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF8B1A2C),
+                                    shape: BoxShape.circle,
                                   ),
                                 ),
-                            ],
-                          ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    a.name,
+                                    style: const TextStyle(
+                                      color: Color(0xFF333333),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (formattedTime.isNotEmpty)
+                                  Text(
+                                    formattedTime,
+                                    style: const TextStyle(
+                                      color: Color(0xFF888888),
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         );
                       }).toList(),
@@ -494,11 +527,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ],
         ),
-        child: const Icon(
-          Icons.add,
-          color: Color(0xFF333333),
-          size: 30,
-        ),
+        child: const Icon(Icons.add, color: Color(0xFF333333), size: 30),
       ),
     );
   }
