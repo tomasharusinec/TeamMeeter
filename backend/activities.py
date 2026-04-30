@@ -6,6 +6,7 @@ from flask import Blueprint
 from datetime import datetime
 from websocket_handler import create_activity_notification, get_db_connection
 from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml, parse_client_deadline
+from notifications import create_activity_assigned_notification
 
 activities_blueprint = Blueprint('activities', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -395,6 +396,10 @@ def assign_activity_user(activity_id):
     except:
         return {"message": "Invalid format!"}, 400
 
+    cursor.execute('SELECT 1 FROM "user" WHERE id_registration = %s', (user_id,))
+    if cursor.fetchone() is None:
+        return {"message": "User not found!"}, 404
+
     try:
         cursor.execute("""
             INSERT INTO activity_user (id_user, id_activity) VALUES (%s, %s)
@@ -403,6 +408,24 @@ def assign_activity_user(activity_id):
     except:
         db.rollback()
         return {"message": "Failed to assign user to activity!"}, 500
+
+    try:
+        if user_id != current_user_id:
+            cursor.execute('SELECT username FROM "user" WHERE id_registration = %s', (current_user_id,))
+            assigner = cursor.fetchone()
+            assigner_username = assigner["username"] if assigner else "unknown"
+            cursor.execute("SELECT name FROM activity WHERE id_activity = %s", (activity_id,))
+            activity_row = cursor.fetchone()
+            activity_name = activity_row["name"] if activity_row else f"Activity #{activity_id}"
+            create_activity_assigned_notification(
+                recipient_user_id=user_id,
+                activity_id=activity_id,
+                activity_name=activity_name,
+                assigned_by_user_id=current_user_id,
+                assigned_by_username=assigner_username,
+            )
+    except:
+        pass
 
     return {"message": "User assigned to activity successfully"}, 200
 

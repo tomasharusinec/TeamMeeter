@@ -6,6 +6,7 @@ from flask import Blueprint, send_file
 import io
 import uuid
 from helper_func import get_current_user_id, db, is_group_member, check_permission, load_yaml, is_valid_image
+from notifications import create_membership_request_notification
 
 groups_blueprint = Blueprint('groups', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -354,43 +355,52 @@ def add_group_member(group_id):
         }, 400
 
     try:
-        cursor.execute("""INSERT INTO group_member (group_id, user_id)
-                          VALUES (%s, %s)
-                       """, (group_id, user_id))
-        cursor.execute('SELECT id_role FROM role WHERE group_id = %s AND name = %s', (group_id, 'Member'))
-        role_result = cursor.fetchone()
+        cursor.execute(
+            'SELECT username FROM "user" WHERE id_registration = %s',
+            (current_user_id,),
+        )
+        requester = cursor.fetchone()
+        requester_username = requester["username"] if requester else "unknown"
 
-        if role_result:
-            role_id = role_result["id_role"]
-        else:
-            cursor.execute('INSERT INTO role (group_id, name, color) VALUES (%s, %s, %s) RETURNING id_role',
-                           (group_id, 'Member', '#808080'))
-            role_id = cursor.fetchone()["id_role"]
+        cursor.execute(
+            'SELECT 1 FROM "group" WHERE id_group = %s',
+            (group_id,),
+        )
+        if cursor.fetchone() is None:
+            return {"message": "Group not found!"}, 404
 
-            cursor.execute("""INSERT INTO role_permission (role_id, permission_id, value)
-                              SELECT %s, id_permission, FALSE
-                              FROM permission
-                           """, (role_id,))
+        cursor.execute(
+            """
+            SELECT 1
+            FROM membership_request_notification mrn
+            JOIN user_notification un ON mrn.notification_id = un.notification_id
+            WHERE un.user_id = %s
+              AND mrn.target_type = 'group'
+              AND mrn.target_id = %s
+              AND mrn.status = 'pending'
+            """,
+            (user_id, group_id),
+        )
+        if cursor.fetchone() is not None:
+            return {"message": "Pending group invitation already exists!"}, 409
 
-        cursor.execute('INSERT INTO user_role (user_id, role_id) VALUES (%s, %s)', (user_id, role_id))
-        cursor.execute('SELECT conversation_id FROM "group" WHERE id_group = %s', (group_id,))
-        conv_data = cursor.fetchone()
-        if conv_data and conv_data["conversation_id"]:
-            cursor.execute("""
-                           INSERT INTO participant (conversation_id, user_id)
-                           VALUES (%s, %s)
-                           """, (conv_data["conversation_id"], user_id))
-
-        db.commit()
+        create_membership_request_notification(
+            recipient_user_id=user_id,
+            requester_user_id=current_user_id,
+            requester_username=requester_username,
+            target_type="group",
+            target_id=group_id,
+            target_name=f"Group #{group_id}",
+        )
     except Exception as e:
         print(e)
         db.rollback()
         return {
-            "message": "Failed to add member!"
+            "message": "Failed to create group invitation!"
         }, 500
 
     return {
-        "message": "Member added successfully"
+        "message": "Invitation sent successfully. User must accept it."
     }, 200
 
 @groups_blueprint.route('/join', methods=["POST"])

@@ -15,7 +15,9 @@ import '../models/activity.dart';
 import '../models/group.dart';
 import 'activity_detail_dialog.dart';
 import 'calendar_screen.dart';
+import 'chat_screen.dart';
 import 'group_detail_screen.dart';
+import 'notifications_screen.dart';
 import 'user_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -224,7 +226,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           // Notification bell
           IconButton(
-            onPressed: () {},
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              );
+            },
             icon: Stack(
               children: [
                 const Icon(
@@ -619,12 +625,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildChatView() {
-    return const Center(
-      child: Text(
-        'Chat coming soon',
-        style: TextStyle(color: Colors.white70, fontSize: 16),
-      ),
-    );
+    return const ConversationsScreen();
   }
 
   Widget _buildGroupsView() {

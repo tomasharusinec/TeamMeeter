@@ -88,6 +88,35 @@ def _migrate_group_capacity_column(cursor, conn):
     conn.commit()
     print('Migration finished: "group".capacity added.')
 
+
+def _migrate_notification_tables(cursor, conn):
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS membership_request_notification (
+            notification_id INT PRIMARY KEY,
+            requester_user_id INT NOT NULL,
+            target_type VARCHAR(20) NOT NULL CHECK (target_type IN ('group', 'conversation')),
+            target_id INT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+            CONSTRAINT fk_mrn_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
+            CONSTRAINT fk_mrn_requester FOREIGN KEY (requester_user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS activity_assignment_notification (
+            notification_id INT PRIMARY KEY,
+            activity_id INT NOT NULL,
+            assigned_by_user_id INT NOT NULL,
+            CONSTRAINT fk_aan_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
+            CONSTRAINT fk_aan_activity FOREIGN KEY (activity_id) REFERENCES activity(id_activity) ON DELETE CASCADE,
+            CONSTRAINT fk_aan_assigner FOREIGN KEY (assigned_by_user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.commit()
+
 # This function was generated using AI (Gemini) with slight manual refinements
 def init_db():
     """
@@ -168,6 +197,7 @@ def init_db():
             _migrate_activity_deadline_column(cursor, conn)
             _migrate_activity_status_column(cursor, conn)
             _migrate_group_capacity_column(cursor, conn)
+            _migrate_notification_tables(cursor, conn)
         except Exception as e:
             conn.rollback()
             print(f"Error applying migrations: {e}")

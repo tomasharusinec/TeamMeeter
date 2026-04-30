@@ -1,0 +1,1190 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+import '../utils/snackbar_utils.dart';
+
+class ConversationsScreen extends StatefulWidget {
+  const ConversationsScreen({super.key});
+
+  @override
+  State<ConversationsScreen> createState() => _ConversationsScreenState();
+}
+
+class _ConversationsScreenState extends State<ConversationsScreen> {
+  bool _isLoading = true;
+  bool _isCreatingConversation = false;
+  List<Map<String, dynamic>> _conversations = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConversations();
+  }
+
+  Future<void> _showCreateConversationDialog() async {
+    final nameController = TextEditingController();
+    final participantUsernamesController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1A0A0A),
+        title: const Text(
+          'Nový chat',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: nameController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Názov chatu',
+                  hintText: 'napr. Projekt tím',
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Zadaj názov chatu';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: participantUsernamesController,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Usernames účastníkov',
+                  hintText: 'napr. jano, eva, tomas',
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Zadaj aspoň 1 username';
+                  }
+                  final parsed = _parseUsernames(value);
+                  if (parsed.isEmpty) {
+                    return 'Nesprávny formát username';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Použi usernames oddelené čiarkou.',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: _isCreatingConversation
+                ? null
+                : () async {
+                    if (!(formKey.currentState?.validate() ?? false)) return;
+                    setState(() => _isCreatingConversation = true);
+                    try {
+                      final api = Provider.of<AuthProvider>(
+                        context,
+                        listen: false,
+                      ).apiService;
+                      final name = nameController.text.trim();
+                      final participantUsernames = _parseUsernames(
+                        participantUsernamesController.text.trim(),
+                      );
+                      final conversationId = await api.createConversation(
+                        name: name,
+                        participantUsernames: participantUsernames,
+                      );
+                      if (!mounted) return;
+                      Navigator.of(dialogContext).pop();
+                      await _loadConversations();
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            conversationId: conversationId,
+                            title: name,
+                          ),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      context.showLatestSnackBar(
+                        SnackBar(
+                          content: Text(e.toString().replaceAll('Exception: ', '')),
+                          backgroundColor: const Color(0xFF8B1A2C),
+                        ),
+                      );
+                    } finally {
+                      if (mounted) {
+                        setState(() => _isCreatingConversation = false);
+                      }
+                    }
+                  },
+            child: _isCreatingConversation
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Vytvoriť'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<String> _parseUsernames(String raw) {
+    return raw
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Future<void> _loadConversations() async {
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final conversations = await api.getConversations();
+      final groups = await api.getGroups();
+      final groupConversationIds = groups
+          .map((group) => group.conversationId)
+          .whereType<int>()
+          .toSet();
+      final directConversations = conversations.where((conversation) {
+        final conversationId = conversation['id'];
+        return conversationId is int && !groupConversationIds.contains(conversationId);
+      }).toList();
+      if (!mounted) return;
+      setState(() => _conversations = directConversations);
+    } catch (e) {
+      if (!mounted) return;
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    if (_conversations.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadConversations,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: const [
+            SizedBox(height: 140),
+            Icon(Icons.chat_bubble_outline, color: Colors.white54, size: 58),
+            SizedBox(height: 16),
+            Text(
+              'Zatiaľ nemáš žiadne konverzácie',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white60),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: _loadConversations,
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 84),
+            itemCount: _conversations.length,
+            itemBuilder: (context, index) {
+              final conversation = _conversations[index];
+              final conversationId = conversation['id'] as int?;
+              final name = (conversation['name']?.toString().trim().isNotEmpty ??
+                      false)
+                  ? conversation['name'].toString().trim()
+                  : 'Konverzácia #${conversationId ?? '?'}';
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A0A0A).withAlpha(204),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withAlpha(16)),
+                ),
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFF8B1A2C),
+                    child: Icon(Icons.forum_outlined, color: Colors.white),
+                  ),
+                  title: Text(
+                    name,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: Text(
+                    'ID: ${conversationId ?? '-'}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                  onTap: conversationId == null
+                      ? null
+                      : () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                conversationId: conversationId,
+                                title: name,
+                              ),
+                            ),
+                          );
+                          if (mounted) _loadConversations();
+                        },
+                ),
+              );
+            },
+          ),
+        ),
+        Positioned(
+          right: 16,
+          bottom: 14,
+          child: FloatingActionButton.extended(
+            backgroundColor: const Color(0xFF8B1A2C),
+            foregroundColor: Colors.white,
+            onPressed: _showCreateConversationDialog,
+            icon: const Icon(Icons.add_comment_outlined),
+            label: const Text('Nový chat'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ChatScreen extends StatefulWidget {
+  final int conversationId;
+  final String title;
+
+  const ChatScreen({
+    super.key,
+    required this.conversationId,
+    required this.title,
+  });
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  static const int _maxFileSizeBytes = 10 * 1024 * 1024;
+  final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  WebSocket? _socket;
+  bool _isSocketConnected = false;
+  bool _isLoading = true;
+  bool _isSending = false;
+  bool _isUploadingFile = false;
+  Completer<void>? _awaitingFileCompleter;
+  List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _participants = [];
+  Map<String, dynamic>? _replyingTo;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeChat();
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _socket?.close();
+    super.dispose();
+  }
+
+  Future<void> _initializeChat() async {
+    await _loadMessages();
+    await _loadParticipants();
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+    await api.syncPendingChatOperations();
+    await _loadMessages();
+    await _connectSocket();
+  }
+
+  Future<void> _loadMessages() async {
+    if (mounted) setState(() => _isLoading = true);
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final messages = await api.getConversationMessages(widget.conversationId);
+      if (!mounted) return;
+      setState(() => _messages = _mergeServerMessagesWithLocalPending(messages));
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadParticipants() async {
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final participants = await api.getConversationParticipants(
+        widget.conversationId,
+      );
+      if (!mounted) return;
+      setState(() => _participants = participants);
+    } catch (_) {
+      // Keep chat functional even if participant list fails.
+    }
+  }
+
+  Future<void> _connectSocket() async {
+    try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final token = auth.token;
+      if (token == null || token.isEmpty) return;
+
+      final wsUrl = Uri.parse(
+        ApiService.baseUrl
+            .replaceFirst('http://', 'ws://')
+            .replaceFirst('https://', 'wss://'),
+      ).replace(path: '/websocket');
+
+      final socket = await WebSocket.connect(wsUrl.toString());
+      socket.add(jsonEncode({'type': 'auth', 'token': token}));
+
+      _socket = socket;
+      setState(() => _isSocketConnected = true);
+
+      socket.listen(
+        (raw) {
+          if (raw is! String) return;
+          final data = jsonDecode(raw) as Map<String, dynamic>;
+          final type = data['type']?.toString();
+          if (type == 'awaiting_file') {
+            _awaitingFileCompleter?.complete();
+            _awaitingFileCompleter = null;
+            return;
+          }
+          if (type == 'new_message' &&
+              data['conversation_id'] == widget.conversationId) {
+            if (!mounted) return;
+            setState(() {
+              _messages.removeWhere(
+                (message) =>
+                    message['is_local_pending'] == true &&
+                    _isLikelySameMessage(data, message),
+              );
+              final incomingId = data['id'];
+              final alreadyPresent = _messages.any((message) {
+                final existingId = message['id'];
+                return incomingId != null &&
+                    existingId != null &&
+                    existingId == incomingId;
+              });
+              if (!alreadyPresent) {
+                _messages.add(data);
+              }
+            });
+            _scrollToBottom();
+          }
+        },
+        onDone: () {
+          if (!mounted) return;
+          setState(() => _isSocketConnected = false);
+        },
+        onError: (_) {
+          if (!mounted) return;
+          setState(() => _isSocketConnected = false);
+        },
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSocketConnected = false);
+    }
+  }
+
+  Future<void> _addParticipantDialog() async {
+    final usernameController = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1A0A0A),
+        title: const Text('Pridať účastníka', style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: usernameController,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'Username',
+            hintText: 'napr. janko123',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Zrušiť'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final username = usernameController.text.trim();
+              if (username.isEmpty) return;
+              try {
+                final api = Provider.of<AuthProvider>(
+                  context,
+                  listen: false,
+                ).apiService;
+                await api.addConversationParticipant(
+                  conversationId: widget.conversationId,
+                  username: username,
+                );
+                if (!mounted) return;
+                Navigator.of(dialogContext).pop();
+                await _loadParticipants();
+                context.showLatestSnackBar(
+                  const SnackBar(
+                    content: Text('Účastník bol pridaný'),
+                    backgroundColor: Color(0xFF8B1A2C),
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                context.showLatestSnackBar(
+                  SnackBar(
+                    content: Text(e.toString().replaceAll('Exception: ', '')),
+                    backgroundColor: const Color(0xFF8B1A2C),
+                  ),
+                );
+              }
+            },
+            child: const Text('Pridať'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendFile() async {
+    if (_isUploadingFile) return;
+    final result = await FilePicker.platform.pickFiles(withData: false);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    final filePath = file.path;
+    if (filePath == null || filePath.isEmpty) {
+      context.showLatestSnackBar(
+        const SnackBar(
+          content: Text('Nepodarilo sa načítať cestu k súboru'),
+          backgroundColor: Color(0xFF8B1A2C),
+        ),
+      );
+      return;
+    }
+    final ioFile = File(filePath);
+    if (!ioFile.existsSync()) {
+      context.showLatestSnackBar(
+        const SnackBar(
+          content: Text('Vybraný súbor neexistuje'),
+          backgroundColor: Color(0xFF8B1A2C),
+        ),
+      );
+      return;
+    }
+    final bytes = await ioFile.readAsBytes();
+    if (bytes.isEmpty) {
+      context.showLatestSnackBar(
+        const SnackBar(
+          content: Text('Nepodarilo sa načítať súbor'),
+          backgroundColor: Color(0xFF8B1A2C),
+        ),
+      );
+      return;
+    }
+    if (bytes.length > _maxFileSizeBytes) {
+      context.showLatestSnackBar(
+        const SnackBar(
+          content: Text('Súbor je príliš veľký. Maximum je 10 MB.'),
+          backgroundColor: Color(0xFF8B1A2C),
+        ),
+      );
+      return;
+    }
+
+    final fileName = file.name;
+    final dotIdx = fileName.lastIndexOf('.');
+    final pureName = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
+    final extension = dotIdx > 0 ? fileName.substring(dotIdx + 1) : 'bin';
+    final text = _messageController.text.trim();
+
+    setState(() => _isUploadingFile = true);
+    try {
+      if (_socket != null && _isSocketConnected) {
+        _awaitingFileCompleter = Completer<void>();
+        _socket!.add(
+          jsonEncode({
+            'type': 'send_message_with_file',
+            'conversation_id': widget.conversationId,
+            'text': text,
+            'file_name': pureName,
+            'file_extension': extension,
+          }),
+        );
+        await _awaitingFileCompleter!.future.timeout(const Duration(seconds: 8));
+        _socket!.add(bytes);
+      } else {
+        final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+        await api.queueOfflineConversationFileMessage(
+          conversationId: widget.conversationId,
+          text: text,
+          filePath: filePath,
+          fileName: pureName,
+          fileExtension: extension,
+        );
+        _addLocalPendingFileMessage(
+          text: text,
+          fileName: pureName,
+          fileExtension: extension,
+        );
+        if (!mounted) return;
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text('Offline: súbor sa odošle po opätovnom pripojení'),
+            backgroundColor: Color(0xFFEF6C00),
+          ),
+        );
+      }
+      _messageController.clear();
+    } catch (e) {
+      try {
+        final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+        await api.queueOfflineConversationFileMessage(
+          conversationId: widget.conversationId,
+          text: text,
+          filePath: filePath,
+          fileName: pureName,
+          fileExtension: extension,
+        );
+        _addLocalPendingFileMessage(
+          text: text,
+          fileName: pureName,
+          fileExtension: extension,
+        );
+        if (!mounted) return;
+        _messageController.clear();
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text('Súbor je uložený offline a odošle sa neskôr'),
+            backgroundColor: Color(0xFFEF6C00),
+          ),
+        );
+      } catch (_) {
+        if (!mounted) return;
+        context.showLatestSnackBar(
+          SnackBar(
+            content: Text(
+              'Odoslanie súboru zlyhalo: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
+            backgroundColor: const Color(0xFF8B1A2C),
+          ),
+        );
+      }
+    } finally {
+      _awaitingFileCompleter = null;
+      if (mounted) setState(() => _isUploadingFile = false);
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty || _isSending) return;
+    final replyPrefix = _replyingTo == null
+        ? ''
+        : 'Reply to ${_replyingTo!['sender_username'] ?? 'user'}: '
+              '${(_replyingTo!['text'] ?? '').toString().replaceAll('\n', ' ').trim()}\n';
+    final payloadText = '$replyPrefix$text';
+
+    setState(() => _isSending = true);
+    try {
+      if (_socket != null && _isSocketConnected) {
+        _socket!.add(
+          jsonEncode({
+            'type': 'send_message',
+            'conversation_id': widget.conversationId,
+            'text': payloadText,
+          }),
+        );
+      } else {
+        final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+        await api.queueOfflineConversationMessage(
+          conversationId: widget.conversationId,
+          text: payloadText,
+        );
+        _addLocalPendingMessage(payloadText);
+        if (!mounted) return;
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text('Offline: správa sa odošle po opätovnom pripojení'),
+            backgroundColor: Color(0xFFEF6C00),
+          ),
+        );
+      }
+      _messageController.clear();
+    } catch (_) {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      await api.queueOfflineConversationMessage(
+        conversationId: widget.conversationId,
+        text: payloadText,
+      );
+      _addLocalPendingMessage(payloadText);
+      if (!mounted) return;
+      _messageController.clear();
+      context.showLatestSnackBar(
+        const SnackBar(
+          content: Text('Správa je uložená offline a odošle sa neskôr'),
+          backgroundColor: Color(0xFFEF6C00),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+          _replyingTo = null;
+        });
+      }
+    }
+  }
+
+  void _addLocalPendingMessage(String text) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final user = auth.user;
+    final localMessage = <String, dynamic>{
+      'id': -DateTime.now().millisecondsSinceEpoch,
+      'conversation_id': widget.conversationId,
+      'sender_id': user?.idRegistration,
+      'sender_username': user?.username ?? 'me',
+      'text': text,
+      'is_local_pending': true,
+    };
+    setState(() => _messages.add(localMessage));
+    _scrollToBottom();
+  }
+
+  void _addLocalPendingFileMessage({
+    required String text,
+    required String fileName,
+    required String fileExtension,
+  }) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final user = auth.user;
+    final localMessage = <String, dynamic>{
+      'id': -DateTime.now().millisecondsSinceEpoch,
+      'conversation_id': widget.conversationId,
+      'sender_id': user?.idRegistration,
+      'sender_username': user?.username ?? 'me',
+      'text': text,
+      'is_local_pending': true,
+      'file': {
+        'id': -1,
+        'name': fileName,
+        'extension': fileExtension,
+      },
+    };
+    setState(() => _messages.add(localMessage));
+    _scrollToBottom();
+  }
+
+  List<Map<String, dynamic>> _mergeServerMessagesWithLocalPending(
+    List<Map<String, dynamic>> serverMessages,
+  ) {
+    final pendingMessages = _messages
+        .where((message) => message['is_local_pending'] == true)
+        .toList();
+
+    final merged = List<Map<String, dynamic>>.from(serverMessages);
+    for (final pending in pendingMessages) {
+      final alreadySynced = serverMessages.any(
+        (serverMessage) => _isLikelySameMessage(serverMessage, pending),
+      );
+      if (!alreadySynced) {
+        merged.add(pending);
+      }
+    }
+    return merged;
+  }
+
+  bool _isLikelySameMessage(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final aText = (a['text'] ?? '').toString().trim();
+    final bText = (b['text'] ?? '').toString().trim();
+    if (aText != bText) return false;
+
+    final aSender = a['sender_id'];
+    final bSender = b['sender_id'];
+    if (aSender != null && bSender != null && aSender != bSender) return false;
+
+    final aFile = a['file'];
+    final bFile = b['file'];
+    if (aFile == null && bFile == null) return true;
+    if (aFile == null || bFile == null) return false;
+
+    final aFileMap = Map<String, dynamic>.from(aFile);
+    final bFileMap = Map<String, dynamic>.from(bFile);
+    final aFileName = (aFileMap['name'] ?? '').toString().trim();
+    final bFileName = (bFileMap['name'] ?? '').toString().trim();
+    final aFileExt = (aFileMap['extension'] ?? '').toString().trim();
+    final bFileExt = (bFileMap['extension'] ?? '').toString().trim();
+    return aFileName == bFileName && aFileExt == bFileExt;
+  }
+
+  Future<void> _downloadAttachment(Map<String, dynamic> file) async {
+    try {
+      final fileId = file['id'];
+      if (fileId == null) return;
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final payload = await api.downloadConversationFile((fileId as num).toInt());
+      final filename = payload['filename']?.toString() ?? 'attachment_$fileId';
+      final bytes = Uint8List.fromList(payload['bytes'] as List<int>);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Uložiť súbor',
+        fileName: filename,
+        bytes: bytes,
+      );
+      if (!mounted || savedPath == null) return;
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text('Súbor uložený: $filename'),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    }
+  }
+
+  Future<void> _showMessageActions(Map<String, dynamic> message) async {
+    final currentUserId = Provider.of<AuthProvider>(
+      context,
+      listen: false,
+    ).user?.idRegistration;
+    final isMine =
+        message['sender_id'] != null && message['sender_id'] == currentUserId;
+
+    final selectedAction = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A0A0A),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply, color: Colors.white),
+              title: const Text('Reply', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.of(context).pop('reply'),
+            ),
+            if (isMine)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () => Navigator.of(context).pop('delete'),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedAction == 'reply') {
+      setState(() => _replyingTo = message);
+      return;
+    }
+    if (selectedAction != 'delete') return;
+
+    final messageId = message['id'];
+    if (messageId == null || (messageId is num && messageId.toInt() <= 0)) {
+      setState(() => _messages.remove(message));
+      return;
+    }
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      await api.deleteConversationMessage(
+        conversationId: widget.conversationId,
+        messageId: (messageId as num).toInt(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages.removeWhere((m) => m['id'] == messageId);
+        if (_replyingTo?['id'] == messageId) _replyingTo = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent + 80,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUserId = Provider.of<AuthProvider>(context).user?.idRegistration;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: const Color(0xFF1A0A0A),
+        actions: [
+          IconButton(
+            onPressed: _addParticipantDialog,
+            tooltip: 'Pridať účastníka',
+            icon: const Icon(Icons.person_add_alt_1),
+          ),
+          IconButton(
+            onPressed: () async {
+              await _loadParticipants();
+              if (!mounted) return;
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: const Color(0xFF1A0A0A),
+                builder: (_) => SafeArea(
+                  child: ListView(
+                    padding: const EdgeInsets.all(14),
+                    children: [
+                      const Text(
+                        'Účastníci',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (_participants.isEmpty)
+                        const Text(
+                          'Nie sú dostupní žiadni účastníci',
+                          style: TextStyle(color: Colors.white60),
+                        ),
+                      for (final participant in _participants)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            participant['username']?.toString() ??
+                                'user #${participant['id_registration'] ?? '?'}',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          subtitle: Text(
+                            'ID: ${participant['id_registration'] ?? '-'}',
+                            style: const TextStyle(color: Colors.white60),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+            tooltip: 'Zobraziť účastníkov',
+            icon: const Icon(Icons.group_outlined),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Icon(
+              _isSocketConnected ? Icons.wifi : Icons.wifi_off,
+              color: _isSocketConnected ? Colors.greenAccent : Colors.redAccent,
+            ),
+          ),
+        ],
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF8B1A2C),
+              Color(0xFF3D0C0C),
+              Color(0xFF1A0A0A),
+              Color(0xFF0D0D0D),
+            ],
+            stops: [0.0, 0.2, 0.55, 1.0],
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        final message = _messages[index];
+                        final isMine =
+                            message['sender_id'] != null &&
+                            message['sender_id'] == currentUserId;
+                        return GestureDetector(
+                          onLongPress: () => _showMessageActions(message),
+                          child: Align(
+                            alignment: isMine
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 9,
+                            ),
+                            constraints: const BoxConstraints(maxWidth: 290),
+                            decoration: BoxDecoration(
+                              color: isMine
+                                  ? const Color(0xFF8B1A2C)
+                                  : const Color(0xFF2A1111),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withAlpha(18),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (!isMine &&
+                                    (message['sender_username']?.toString() ??
+                                            '')
+                                        .isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Text(
+                                      message['sender_username'].toString(),
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                Text(
+                                  message['text']?.toString() ?? '',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                if (message['is_local_pending'] == true)
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 5),
+                                    child: Text(
+                                      'Čaká na odoslanie...',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                if (message['file'] != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: InkWell(
+                                      onTap: () {
+                                        final fileMap = Map<String, dynamic>.from(
+                                          message['file'],
+                                        );
+                                        final fileId = fileMap['id'];
+                                        if (fileId is num && fileId.toInt() > 0) {
+                                          _downloadAttachment(fileMap);
+                                        }
+                                      },
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.download_rounded,
+                                            size: 14,
+                                            color: Colors.white70,
+                                          ),
+                                          Text(
+                                            '${message['file']['name']}.${message['file']['extension']}',
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                              decoration: TextDecoration.underline,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                color: Colors.black.withAlpha(18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_replyingTo != null)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2A1111),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Reply na: ${_replyingTo!['sender_username'] ?? 'user'} - '
+                                '${(_replyingTo!['text'] ?? '').toString()}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => setState(() => _replyingTo = null),
+                              icon: const Icon(
+                                Icons.close,
+                                size: 16,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: _isUploadingFile ? null : _sendFile,
+                          icon: _isUploadingFile
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.attach_file, color: Colors.white70),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            style: const TextStyle(color: Colors.white),
+                            minLines: 1,
+                            maxLines: 4,
+                            decoration: InputDecoration(
+                              hintText: 'Napíš správu...',
+                              hintStyle: const TextStyle(color: Colors.white54),
+                              filled: true,
+                              fillColor: const Color(0xFF2A1111),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withAlpha(16),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withAlpha(16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: _isSending ? null : _sendMessage,
+                          icon: _isSending
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.send_rounded, color: Colors.white),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFF8B1A2C),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

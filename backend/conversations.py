@@ -7,6 +7,7 @@ from psycopg2.extras import RealDictCursor
 from flask import Blueprint
 from helper_func import db, get_current_user_id, load_yaml
 from cryptography.fernet import Fernet
+from notifications import create_membership_request_notification
 
 conversations_blueprint = Blueprint('/conversations', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -44,12 +45,40 @@ def create_conversation():
         return {"message": "Invalid format! JSON required."}, 400
 
     name = request.json.get("name")
-    participant_ids = request.json.get("participant_ids", request.json.get("participants", []))
+    participant_ids = request.json.get(
+        "participant_ids",
+        request.json.get("participants", [])
+    )
+    participant_usernames = request.json.get("participant_usernames", [])
 
     if not isinstance(participant_ids, list):
         participant_ids = []
+    if not isinstance(participant_usernames, list):
+        participant_usernames = []
 
-    unique_participants = set(participant_ids)
+    resolved_participant_ids = set()
+    for participant_id in participant_ids:
+        try:
+            resolved_participant_ids.add(int(participant_id))
+        except:
+            continue
+
+    for username in participant_usernames:
+        if not isinstance(username, str):
+            continue
+        cleaned_username = username.strip()
+        if not cleaned_username:
+            continue
+        cursor.execute(
+            'SELECT id_registration FROM "user" WHERE username = %s',
+            (cleaned_username,)
+        )
+        user_row = cursor.fetchone()
+        if user_row is None:
+            return {"message": f'User "{cleaned_username}" not found!'}, 404
+        resolved_participant_ids.add(user_row["id_registration"])
+
+    unique_participants = set(resolved_participant_ids)
     unique_participants.add(current_user_id)
 
     try:
@@ -59,13 +88,39 @@ def create_conversation():
                        """, (name,))
         conv_id = cursor.fetchone()["id"]
 
-        for pid in unique_participants:
-            cursor.execute("""
-                           INSERT INTO participant (conversation_id, user_id)
-                           VALUES (%s, %s)
-                           """, (conv_id, pid))
+        # Creator is always participant immediately.
+        cursor.execute(
+            """
+            INSERT INTO participant (conversation_id, user_id)
+            VALUES (%s, %s)
+            ON CONFLICT (conversation_id, user_id) DO NOTHING
+            """,
+            (conv_id, current_user_id),
+        )
 
         db.commit()
+
+        cursor.execute(
+            'SELECT username FROM "user" WHERE id_registration = %s',
+            (current_user_id,),
+        )
+        requester = cursor.fetchone()
+        requester_username = requester["username"] if requester else "unknown"
+
+        for pid in unique_participants:
+            if pid == current_user_id:
+                continue
+            try:
+                create_membership_request_notification(
+                    recipient_user_id=pid,
+                    requester_user_id=current_user_id,
+                    requester_username=requester_username,
+                    target_type="conversation",
+                    target_id=conv_id,
+                    target_name=name or f"Conversation #{conv_id}",
+                )
+            except:
+                pass
     except Exception as e:
         db.rollback()
         print(f"Error creating conversation: {e}")
@@ -141,21 +196,79 @@ def add_participant(conv_id):
     if cursor.fetchone() is not None:
         return {"message": "This is a group conversation. Please use the group endpoints to add members!"}, 403
 
-    try:
-        user_id = request.json["user_id"]
-    except:
+    if not request.is_json:
         return {"message": "Invalid format!"}, 400
 
+    user_id = request.json.get("user_id")
+    username = request.json.get("username")
+
+    if user_id is None and (username is None or not str(username).strip()):
+        return {"message": "user_id or username is required!"}, 400
+
+    if user_id is None:
+        cursor.execute(
+            'SELECT id_registration FROM "user" WHERE username = %s',
+            (str(username).strip(),)
+        )
+        user_row = cursor.fetchone()
+        if user_row is None:
+            return {"message": "User not found!"}, 404
+        user_id = user_row["id_registration"]
+
     try:
-        cursor.execute("""
-            INSERT INTO participant (conversation_id, user_id) VALUES (%s, %s)
-        """, (conv_id, user_id))
-        db.commit()
+        cursor.execute(
+            'SELECT id_registration FROM "user" WHERE id_registration = %s',
+            (user_id,)
+        )
+        if cursor.fetchone() is None:
+            return {"message": "User not found!"}, 404
+
+        cursor.execute(
+            "SELECT 1 FROM participant WHERE conversation_id = %s AND user_id = %s",
+            (conv_id, user_id),
+        )
+        if cursor.fetchone() is not None:
+            return {"message": "User is already a participant!"}, 409
+
+        cursor.execute(
+            """
+            SELECT 1
+            FROM membership_request_notification mrn
+            JOIN user_notification un ON mrn.notification_id = un.notification_id
+            WHERE un.user_id = %s
+              AND mrn.target_type = 'conversation'
+              AND mrn.target_id = %s
+              AND mrn.status = 'pending'
+            """,
+            (user_id, conv_id),
+        )
+        if cursor.fetchone() is not None:
+            return {"message": "Pending conversation invitation already exists!"}, 409
+
+        cursor.execute(
+            'SELECT username FROM "user" WHERE id_registration = %s',
+            (current_user_id,),
+        )
+        requester = cursor.fetchone()
+        requester_username = requester["username"] if requester else "unknown"
+
+        cursor.execute("SELECT name FROM conversation WHERE id = %s", (conv_id,))
+        conv_data = cursor.fetchone()
+        conversation_name = conv_data["name"] if conv_data and conv_data["name"] else f"Conversation #{conv_id}"
+
+        create_membership_request_notification(
+            recipient_user_id=user_id,
+            requester_user_id=current_user_id,
+            requester_username=requester_username,
+            target_type="conversation",
+            target_id=conv_id,
+            target_name=conversation_name,
+        )
     except:
         db.rollback()
-        return {"message": "Failed to add participant!"}, 500
+        return {"message": "Failed to create invitation!"}, 500
 
-    return {"message": "Participant added successfully"}, 200
+    return {"message": "Invitation sent successfully. User must accept it."}, 200
 
 
 @conversations_blueprint.route('/<int:conv_id>/participants/<int:user_id>', methods=["DELETE"])

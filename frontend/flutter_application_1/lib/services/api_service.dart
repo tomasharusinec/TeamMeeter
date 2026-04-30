@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -9,13 +10,14 @@ import '../models/activity.dart';
 import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.123:5000';
+  static const String baseUrl = 'http://192.168.1.105:5000';
   static const String _activityCacheKey = 'cached_activities_v1';
   static const String _activityOpsKey = 'pending_activity_ops_v1';
   static const String _activityTempIdKey = 'activity_temp_id_seed_v1';
   static const String _groupCacheKey = 'cached_groups_v1';
   static const String _groupOpsKey = 'pending_group_ops_v1';
   static const String _profileOpsKey = 'pending_profile_ops_v1';
+  static const String _chatOpsKey = 'pending_chat_ops_v1';
   static const String _groupTempIdKey = 'group_temp_id_seed_v1';
   static const String _groupIdMappingKey = 'group_id_mapping_v1';
   static const String _roleTempIdKey = 'role_temp_id_seed_v1';
@@ -306,6 +308,163 @@ class ApiService {
     final ops = await _loadPendingProfileOps();
     ops.add(op);
     await _savePendingProfileOps(ops);
+  }
+
+  Future<List<Map<String, dynamic>>> _loadPendingChatOps() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_chatOpsKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return List<Map<String, dynamic>>.from(jsonDecode(raw));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _savePendingChatOps(List<Map<String, dynamic>> ops) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_chatOpsKey, jsonEncode(ops));
+  }
+
+  Future<void> queueOfflineConversationMessage({
+    required int conversationId,
+    required String text,
+  }) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    final ops = await _loadPendingChatOps();
+    ops.add({
+      'type': 'send_message',
+      'conversation_id': conversationId,
+      'text': trimmed,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    await _savePendingChatOps(ops);
+  }
+
+  Future<void> queueOfflineConversationFileMessage({
+    required int conversationId,
+    required String text,
+    required String filePath,
+    required String fileName,
+    required String fileExtension,
+  }) async {
+    final ops = await _loadPendingChatOps();
+    ops.add({
+      'type': 'send_message_with_file',
+      'conversation_id': conversationId,
+      'text': text.trim(),
+      'file_path': filePath,
+      'file_name': fileName,
+      'file_extension': fileExtension,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    await _savePendingChatOps(ops);
+  }
+
+  Future<bool> syncPendingChatOperations() async {
+    final pending = await _loadPendingChatOps();
+    if (pending.isEmpty || _token == null || _token!.isEmpty) return false;
+
+    final wsUrl = Uri.parse(
+      baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://'),
+    ).replace(path: '/websocket');
+
+    WebSocket? socket;
+    StreamSubscription? subscription;
+    Completer<void>? awaitingFileCompleter;
+    var syncedAny = false;
+    try {
+      socket = await WebSocket.connect(wsUrl.toString()).timeout(
+        const Duration(seconds: 6),
+      );
+      socket.add(jsonEncode({'type': 'auth', 'token': _token}));
+
+      subscription = socket.listen((raw) {
+        if (raw is! String) return;
+        try {
+          final data = jsonDecode(raw) as Map<String, dynamic>;
+          if (data['type']?.toString() == 'awaiting_file') {
+            awaitingFileCompleter?.complete();
+            awaitingFileCompleter = null;
+          }
+        } catch (_) {}
+      });
+
+      // Give backend a short moment to complete auth handshake.
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      final remaining = <Map<String, dynamic>>[];
+      for (final op in pending) {
+        try {
+          final type = op['type']?.toString();
+          if (type == 'send_message') {
+            socket.add(
+              jsonEncode({
+                'type': 'send_message',
+                'conversation_id': op['conversation_id'],
+                'text': op['text'],
+              }),
+            );
+            syncedAny = true;
+            continue;
+          }
+          if (type == 'send_message_with_file') {
+            final filePath = op['file_path']?.toString();
+            final fileName = op['file_name']?.toString();
+            final fileExtension = op['file_extension']?.toString();
+            if (filePath == null ||
+                fileName == null ||
+                fileExtension == null ||
+                filePath.isEmpty ||
+                fileName.isEmpty ||
+                fileExtension.isEmpty) {
+              continue;
+            }
+            final file = File(filePath);
+            if (!file.existsSync()) {
+              continue;
+            }
+            final bytes = await file.readAsBytes();
+            if (bytes.isEmpty) {
+              continue;
+            }
+
+            final fileHandshakeCompleter = Completer<void>();
+            awaitingFileCompleter = fileHandshakeCompleter;
+            socket.add(
+              jsonEncode({
+                'type': 'send_message_with_file',
+                'conversation_id': op['conversation_id'],
+                'text': op['text'] ?? '',
+                'file_name': fileName,
+                'file_extension': fileExtension,
+              }),
+            );
+            await fileHandshakeCompleter.future.timeout(
+              const Duration(seconds: 8),
+            );
+            socket.add(bytes);
+            syncedAny = true;
+            continue;
+          }
+          remaining.add(op);
+        } catch (_) {
+          remaining.add(op);
+        }
+      }
+      await _savePendingChatOps(remaining);
+      return syncedAny;
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        await subscription?.cancel();
+      } catch (_) {}
+      try {
+        await socket?.close();
+      } catch (_) {}
+    }
   }
 
   Future<void> _saveCachedGroupMembers(
@@ -1040,6 +1199,110 @@ class ApiService {
     throw _buildApiException(response, 'Nepodarilo sa načítať chat');
   }
 
+  Future<List<Map<String, dynamic>>> getConversations() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/conversations/'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['conversations'] ?? const []);
+    }
+    throw _buildApiException(response, 'Nepodarilo sa načítať konverzácie');
+  }
+
+  Future<List<Map<String, dynamic>>> getConversationMessages(
+    int conversationId,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/conversations/$conversationId/messages'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['messages'] ?? const []);
+    }
+    throw _buildApiException(response, 'Nepodarilo sa načítať správy');
+  }
+
+  Future<int> createConversation({
+    required String name,
+    required List<String> participantUsernames,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/conversations/'),
+      headers: _headers,
+      body: jsonEncode({
+        'name': name,
+        'participant_usernames': participantUsernames,
+      }),
+    );
+    if (response.statusCode == 201) {
+      final data = Map<String, dynamic>.from(jsonDecode(response.body));
+      return (data['conversation_id'] as num).toInt();
+    }
+    throw _buildApiException(response, 'Nepodarilo sa vytvoriť konverzáciu');
+  }
+
+  Future<List<Map<String, dynamic>>> getConversationParticipants(
+    int conversationId,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/conversations/$conversationId/participants'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['participants'] ?? const []);
+    }
+    throw _buildApiException(response, 'Nepodarilo sa načítať účastníkov');
+  }
+
+  Future<void> addConversationParticipant({
+    required int conversationId,
+    required String username,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/conversations/$conversationId/participants'),
+      headers: _headers,
+      body: jsonEncode({'username': username}),
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa pridať účastníka');
+    }
+  }
+
+  Future<void> deleteConversationMessage({
+    required int conversationId,
+    required int messageId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/conversations/$conversationId/messages/$messageId'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa zmazať správu');
+    }
+  }
+
+  Future<Map<String, dynamic>> downloadConversationFile(int fileId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/conversations/files/$fileId'),
+      headers: _headers,
+    );
+    if (response.statusCode == 200) {
+      final disposition = response.headers['content-disposition'] ?? '';
+      var filename = 'attachment_$fileId';
+      final marker = 'filename=';
+      final idx = disposition.indexOf(marker);
+      if (idx != -1) {
+        filename = disposition.substring(idx + marker.length).replaceAll('"', '');
+      }
+      return {'bytes': response.bodyBytes, 'filename': filename};
+    }
+    throw _buildApiException(response, 'Nepodarilo sa stiahnuť súbor');
+  }
+
   Future<void> deleteGroup(int groupId) async {
     if (groupId < 0) {
       final groupOps = await _loadPendingGroupOps();
@@ -1293,6 +1556,7 @@ class ApiService {
   }
 
   Future<bool> syncPendingActivityOperations() async {
+    await syncPendingChatOperations();
     await _syncPendingProfileOperations();
     await _syncPendingGroupOperations();
     final pendingOps = await _loadPendingActivityOps();
@@ -1907,7 +2171,8 @@ class ApiService {
     final activityOps = await _loadPendingActivityOps();
     final groupOps = await _loadPendingGroupOps();
     final profileOps = await _loadPendingProfileOps();
-    return activityOps.length + groupOps.length + profileOps.length;
+    final chatOps = await _loadPendingChatOps();
+    return activityOps.length + groupOps.length + profileOps.length + chatOps.length;
   }
 
   Future<Map<String, dynamic>> createGroup(
@@ -2055,5 +2320,32 @@ class ApiService {
       return List<Map<String, dynamic>>.from(data['notifications']);
     }
     return [];
+  }
+
+  Future<void> deleteNotification(int notificationId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/notifications/$notificationId'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa zmazať notifikáciu');
+    }
+  }
+
+  Future<void> respondToMembershipNotification({
+    required int notificationId,
+    required bool accept,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/notifications/$notificationId/respond'),
+      headers: _headers,
+      body: jsonEncode({'decision': accept ? 'accept' : 'reject'}),
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(
+        response,
+        'Nepodarilo sa spracovať požiadavku notifikácie',
+      );
+    }
   }
 }

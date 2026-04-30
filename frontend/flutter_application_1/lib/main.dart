@@ -91,21 +91,7 @@ class AuthWrapper extends StatelessWidget {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         if (authProvider.isInitializing) {
-          final gradientColors = AppColors.screenGradient(context);
-          return Scaffold(
-            body: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: gradientColors,
-                ),
-              ),
-              child: const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-            ),
-          );
+          return const _EpicLoadingScreen();
         }
         if (authProvider.isAuthenticated) {
           return const HomeScreen();
@@ -113,6 +99,124 @@ class AuthWrapper extends StatelessWidget {
           return const LoginScreen();
         }
       },
+    );
+  }
+}
+
+class _EpicLoadingScreen extends StatefulWidget {
+  const _EpicLoadingScreen();
+
+  @override
+  State<_EpicLoadingScreen> createState() => _EpicLoadingScreenState();
+}
+
+class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final gradientColors = AppColors.screenGradient(context);
+    return Scaffold(
+      body: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = _controller.value;
+          final glow = 0.3 + (t * 0.7);
+          final scale = 0.96 + (t * 0.08);
+          return Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: gradientColors,
+              ),
+            ),
+            child: Center(
+              child: Transform.scale(
+                scale: scale,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withAlpha(18),
+                        border: Border.all(
+                          color: Colors.white.withAlpha((80 + (90 * glow)).toInt()),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFE57373).withAlpha(
+                              (90 + (120 * glow)).toInt(),
+                            ),
+                            blurRadius: 24 + (16 * glow),
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.groups_rounded,
+                        color: Colors.white,
+                        size: 58,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'TeamMeeter',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Preparing your workspace...',
+                      style: TextStyle(
+                        color: Colors.white.withAlpha(210),
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: 170,
+                      child: LinearProgressIndicator(
+                        value: 0.15 + (0.75 * t),
+                        minHeight: 5,
+                        borderRadius: BorderRadius.circular(999),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFFE57373),
+                        ),
+                        backgroundColor: Colors.white.withAlpha(35),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

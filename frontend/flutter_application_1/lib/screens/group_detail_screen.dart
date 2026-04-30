@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
 import 'group_basic_information_screen.dart';
+import 'chat_screen.dart';
 import 'group_invites_screen.dart';
 import 'group_members_screen.dart';
 import 'group_roles_screen.dart';
@@ -37,29 +38,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       if (mounted) setState(() => _fullGroup = group);
     } catch (_) {
       // Ignore for now; option checks handle permission/errors.
-    }
-  }
-
-  Future<void> _openIfAuthorized({
-    required Future<void> Function() accessCheck,
-    required String title,
-  }) async {
-    try {
-      await accessCheck();
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => _GroupOptionPlaceholderScreen(title: title),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      context.showLatestSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: const Color(0xFF8B1A2C),
-        ),
-      );
     }
   }
 
@@ -321,9 +299,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 _OptionButton(
                   text: 'Chat',
                   icon: Icons.chat_bubble_outline,
-                  onPressed: () => _openIfAuthorized(
-                    title: 'Chat',
-                    accessCheck: () async {
+                  onPressed: () async {
+                    try {
                       final details =
                           _fullGroup ??
                           await api.getGroupDetails(shownGroup.idGroup);
@@ -333,9 +310,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                           'Chat pre túto skupinu nie je dostupný',
                         );
                       }
-                      await api.getConversation(conversationId);
-                    },
-                  ),
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            conversationId: conversationId,
+                            title: details.name,
+                          ),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      context.showLatestSnackBar(
+                        SnackBar(
+                          content: Text(e.toString().replaceAll('Exception: ', '')),
+                          backgroundColor: const Color(0xFF8B1A2C),
+                        ),
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 10),
                 _OptionButton(
@@ -477,28 +469,6 @@ class _OptionButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
           ),
           side: BorderSide(color: Colors.white.withAlpha(20)),
-        ),
-      ),
-    );
-  }
-}
-
-class _GroupOptionPlaceholderScreen extends StatelessWidget {
-  final String title;
-
-  const _GroupOptionPlaceholderScreen({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        backgroundColor: const Color(0xFF1A0A0A),
-      ),
-      body: const Center(
-        child: Text(
-          'Coming soon',
-          style: TextStyle(color: Colors.white70, fontSize: 16),
         ),
       ),
     );
