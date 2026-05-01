@@ -15,6 +15,15 @@ db = psycopg2.connect(
     database=os.getenv("DB_NAME", "TeamsMeeter")
 )
 
+ACTIVITY_PERMISSION_NAMES = (
+    "view_activities",
+    "create_activity",
+    "edit_activity",
+    "delete_activity",
+    "assign_activity_user",
+    "assign_activity_role",
+)
+
 # Verifies if a user has a specific permission in a group
 def check_permission(user_id, group_id, permission_name):
     with db.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -32,6 +41,28 @@ def check_permission(user_id, group_id, permission_name):
                   )
             LIMIT 1
         """, (user_id, group_id, permission_name))
+        return cursor.fetchone() is not None
+
+
+def has_any_activity_permission(user_id, group_id):
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM user_role ur
+            JOIN role r ON ur.role_id = r.id_role
+            LEFT JOIN role_permission rp ON rp.role_id = r.id_role
+            LEFT JOIN permission p ON p.id_permission = rp.permission_id
+            WHERE ur.user_id = %s
+              AND r.group_id = %s
+              AND (
+                    (p.name = ANY(%s) AND rp.value = TRUE)
+                    OR r.name = 'Manager'
+                  )
+            LIMIT 1
+            """,
+            (user_id, group_id, list(ACTIVITY_PERMISSION_NAMES)),
+        )
         return cursor.fetchone() is not None
 
 

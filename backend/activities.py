@@ -7,7 +7,15 @@ from datetime import datetime
 import threading
 import time
 from websocket_handler import create_activity_notification, get_db_connection
-from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml, parse_client_deadline
+from helper_func import (
+    db,
+    get_current_user_id,
+    is_group_member,
+    check_permission,
+    has_any_activity_permission,
+    load_yaml,
+    parse_client_deadline,
+)
 from notifications import (
     create_activity_assigned_notification,
     create_activity_completed_notification,
@@ -174,8 +182,8 @@ def get_activities(group_id):
     if not is_group_member(current_user_id, group_id):
         return {"message": "You are not a member of this group!"}, 403
 
-    if not check_permission(current_user_id, group_id, "view_activities"):
-        return {"message": "You don't have permission to view activities!"}, 403
+    if not has_any_activity_permission(current_user_id, group_id):
+        return {"message": "You don't have permission to access group activities!"}, 403
 
     cursor.execute("""
         SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.status, a.creator_id, u.username AS creator_username
@@ -185,6 +193,19 @@ def get_activities(group_id):
     """, (group_id,))
     activities = cursor.fetchall()
     return {"message": "Success", "activities": activities}, 200
+
+
+@activities_blueprint.route('/groups/<int:group_id>/access', methods=["GET"])
+@jwt_required()
+def get_group_activity_access(group_id):
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not is_group_member(current_user_id, group_id):
+        return {"message": "You are not a member of this group!"}, 403
+
+    has_access = has_any_activity_permission(current_user_id, group_id)
+    return {"message": "Success", "has_access": has_access}, 200
 
 
 @activities_blueprint.route('/groups/<int:group_id>', methods=["POST"])
@@ -262,8 +283,8 @@ def get_activity(activity_id):
         if not is_group_member(current_user_id, group_id):
             return {"message": "You are not a member of this group!"}, 403
 
-        if not check_permission(current_user_id, group_id, "view_activities"):
-            return {"message": "You don't have permission to view activities!"}, 403
+        if not has_any_activity_permission(current_user_id, group_id):
+            return {"message": "You don't have permission to access this group activity!"}, 403
 
     cursor.execute("""
         SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.status, a.creator_id, a.group_id, u.username AS creator_username

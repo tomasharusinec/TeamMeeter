@@ -94,3 +94,34 @@ login:
             type: object
             properties:
               "message": {type: string, example: "Invalid credentials!"}
+
+google_login:
+  tags:
+    - Authorization
+  summary: "Login with Google SSO"
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            id_token: {type: string, example: "eyJhbGciOiJSUzI1NiIs..."}
+  responses:
+    200:
+      description: "Google login successful"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              "message": {type: string, example: "Success"}
+              "token": {type: string, example: "eyJhbG..."}
+    400:
+      description: "Invalid request format"
+    401:
+      description: "Invalid Google token or unverified email"
+    500:
+      description: "Backend Google config missing or user creation failed"
+    501:
+      description: "google-auth dependency not installed on backend"

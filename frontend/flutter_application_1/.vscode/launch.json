@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Flutter App (Debug)",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "--dart-define",
+                "GOOGLE_WEB_CLIENT_ID=247203523159-lvkktkvg6lsipc7mjb64knihkbv3tf18.apps.googleusercontent.com"
+            ]
+        }
+    ]
+}

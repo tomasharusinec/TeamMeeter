@@ -7,6 +7,7 @@ import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
 import 'group_basic_information_screen.dart';
 import 'chat_screen.dart';
+import 'group_activities_screen.dart';
 import 'group_invites_screen.dart';
 import 'group_members_screen.dart';
 import 'group_roles_screen.dart';
@@ -23,6 +24,7 @@ class GroupDetailScreen extends StatefulWidget {
 class _GroupDetailScreenState extends State<GroupDetailScreen> {
   bool _isDeleting = false;
   bool _isLeaving = false;
+  bool _canAccessGroupActivities = false;
   Group? _fullGroup;
 
   @override
@@ -35,7 +37,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final group = await api.getGroupDetails(widget.group.idGroup);
+      final hasActivityAccess = await api.hasGroupActivityAccess(widget.group.idGroup);
       if (mounted) setState(() => _fullGroup = group);
+      if (mounted) {
+        setState(() => _canAccessGroupActivities = hasActivityAccess);
+      }
     } catch (_) {
       // Ignore for now; option checks handle permission/errors.
     }
@@ -296,6 +302,25 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   },
                 ),
                 const SizedBox(height: 10),
+                if (_canAccessGroupActivities)
+                  _OptionButton(
+                    text: 'Group activities',
+                    icon: Icons.playlist_add_check_circle_outlined,
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => GroupActivitiesScreen(
+                            groupId: shownGroup.idGroup,
+                            groupName: shownGroup.name,
+                          ),
+                        ),
+                      );
+                      if (mounted) {
+                        _loadGroupDetails();
+                      }
+                    }
+                  ),
+                if (_canAccessGroupActivities) const SizedBox(height: 10),
                 _OptionButton(
                   text: 'Chat',
                   icon: Icons.chat_bubble_outline,

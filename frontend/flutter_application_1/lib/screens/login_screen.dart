@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
 import '../providers/auth_provider.dart';
@@ -20,10 +21,20 @@ class _LoginScreenState extends State<LoginScreen>
   bool _isPasswordVisible = false;
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
+  late final GoogleSignIn _googleSignIn;
+  late final Future<void> _googleInitFuture;
 
   @override
   void initState() {
     super.initState();
+    const webClientId = String.fromEnvironment(
+      'GOOGLE_WEB_CLIENT_ID',
+      defaultValue: '',
+    );
+    _googleSignIn = GoogleSignIn.instance;
+    _googleInitFuture = _googleSignIn.initialize(
+      serverClientId: webClientId.isEmpty ? null : webClientId,
+    );
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -68,6 +79,58 @@ class _LoginScreenState extends State<LoginScreen>
           );
         }
       }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    try {
+      await _googleInitFuture;
+      await _googleSignIn.signOut();
+      final account = await _googleSignIn.authenticate(
+        scopeHint: const ['email', 'profile'],
+      );
+      final auth = account.authentication;
+      final idToken = auth.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception(
+          'Google ID token nebol získaný. Skontroluj GOOGLE_WEB_CLIENT_ID.',
+        );
+      }
+      if (!mounted) return;
+      await Provider.of<AuthProvider>(
+        context,
+        listen: false,
+      ).loginWithGoogleIdToken(idToken);
+    } on GoogleSignInException catch (e) {
+      if (!mounted) return;
+      String message = 'Google prihlásenie zlyhalo';
+      if (e.code == GoogleSignInExceptionCode.clientConfigurationError) {
+        message =
+            'Google SSO nie je spravne nakonfigurovane (OAuth client/SHA-1/google-services).';
+      } else if (e.code == GoogleSignInExceptionCode.canceled) {
+        message = 'Google prihlasenie bolo zrusene.';
+      }
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: const Color(0xFF8B1A2C),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceAll('Exception: ', '').trim();
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(
+            message.isEmpty ? 'Google prihlásenie zlyhalo' : message,
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
@@ -154,27 +217,31 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                           const SizedBox(height: 8),
-                          // Google sign in placeholder
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(22),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha(51),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                            child: const Center(
-                              child: Text(
-                                'G',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF333333),
+                          GestureDetector(
+                            onTap: authProvider.isLoading
+                                ? null
+                                : _signInWithGoogle,
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(22),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withAlpha(51),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'G',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF333333),
+                                  ),
                                 ),
                               ),
                             ),

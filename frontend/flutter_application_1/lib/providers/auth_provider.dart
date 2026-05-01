@@ -191,6 +191,31 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  Future<void> loginWithGoogleIdToken(String idToken) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final response = await _apiService.loginWithGoogle(idToken);
+      _token = response['token'];
+      _apiService.setToken(_token);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tokenKey, _token!);
+
+      _user = await _apiService.getCurrentUser();
+      if (_user != null) {
+        _apiService.setCacheNamespace(_user!.idRegistration.toString());
+        await _saveCachedUser(_user!);
+      }
+    } catch (e) {
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> logout() async {
     _token = null;
     _user = null;

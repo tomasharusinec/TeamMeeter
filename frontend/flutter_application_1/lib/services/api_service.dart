@@ -10,7 +10,7 @@ import '../models/activity.dart';
 import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.123:5000';
+  static const String baseUrl = 'http://192.168.1.105:5000';
   static const String _activityCacheKey = 'cached_activities_v1';
   static const String _activityOpsKey = 'pending_activity_ops_v1';
   static const String _activityTempIdKey = 'activity_temp_id_seed_v1';
@@ -851,6 +851,29 @@ class ApiService {
     throw Exception(body['message'] ?? 'Prihlásenie zlyhalo');
   }
 
+  Future<Map<String, dynamic>> loginWithGoogle(String idToken) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/authorization/google-login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'id_token': idToken}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      final body = jsonDecode(response.body);
+      throw Exception(body['message'] ?? 'Google prihlásenie zlyhalo');
+    } on SocketException catch (_) {
+      throw Exception('Backend nie je dostupny. Skontroluj server a baseUrl.');
+    } on http.ClientException catch (_) {
+      throw Exception(
+        'Sietova chyba pri volani backendu. Skontroluj baseUrl a pripojenie.',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> register({
     required String firstname,
     required String surname,
@@ -1292,6 +1315,36 @@ class ApiService {
         'role_id': roleId,
       });
     }
+  }
+
+  Future<bool> hasGroupActivityAccess(int groupId) async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/activities/groups/$groupId/access'), headers: _headers)
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['has_access'] == true;
+    }
+    if (response.statusCode == 403) {
+      return false;
+    }
+    throw _buildApiException(
+      response,
+      'Nepodarilo sa overiť prístup ku skupinovým aktivitám',
+    );
+  }
+
+  Future<List<Activity>> getGroupActivities(int groupId) async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/activities/groups/$groupId'), headers: _headers)
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return (data['activities'] as List)
+          .map((a) => Activity.fromJson(a))
+          .toList();
+    }
+    throw _buildApiException(response, 'Nepodarilo sa načítať aktivity skupiny');
   }
 
   Future<Map<String, dynamic>> createGroupActivity({

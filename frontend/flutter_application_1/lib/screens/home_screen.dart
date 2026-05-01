@@ -190,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() => _isLoading = true);
     await Future.wait([
       _loadActivities(showError: false),
-      _loadGroups(showError: false),
+      _loadGroups(showError: false, preservePreviousOnEmpty: true),
       _refreshNotificationIndicator(),
     ]);
     await _refreshOfflineBannerState();
@@ -234,7 +234,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // cache when offline) without blocking UI.
       await _loadActivities(showError: false);
       if (reachable && syncedSomething && mounted) {
-        await _loadGroups(showError: false, silent: true);
+        await _loadGroups(
+          showError: false,
+          silent: true,
+          preservePreviousOnEmpty: true,
+        );
       }
       await _refreshOfflineBannerState();
     } catch (_) {}
@@ -262,7 +266,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _loadGroups({bool showError = true, bool silent = false}) async {
+  Future<void> _loadGroups({
+    bool showError = true,
+    bool silent = false,
+    bool preservePreviousOnEmpty = false,
+  }) async {
     final requestId = ++_groupsLoadRequestId;
     if (!silent && mounted) setState(() => _isGroupsLoading = true);
     try {
@@ -271,6 +279,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final api = authProvider.apiService;
       final groups = await api.getGroups();
       if (!mounted || requestId != _groupsLoadRequestId) return;
+      if (preservePreviousOnEmpty && groups.isEmpty && _groups.isNotEmpty) {
+        return;
+      }
       setState(() => _groups = groups);
       await _refreshOfflineBannerState();
     } catch (e) {
@@ -909,11 +920,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       child: ListTile(
         onTap: () async {
-          await Navigator.of(context).push<bool>(
+          final didMutateGroups = await Navigator.of(context).push<bool>(
             MaterialPageRoute(builder: (_) => GroupDetailScreen(group: group)),
           );
           if (mounted) {
-            _loadData();
+            _loadGroups(
+              showError: false,
+              preservePreviousOnEmpty: didMutateGroups != true,
+            );
+            _loadActivities(showError: false);
+            _refreshNotificationIndicator();
           }
         },
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
