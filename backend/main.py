@@ -11,7 +11,10 @@ from helper_func import get_current_user_id, sync_permissions
 from users import users_blueprint
 from roles import roles_blueprint
 from conversations import conversations_blueprint
+from activities import purge_expired_activities_and_notify
 import os
+import threading
+import time
 from flask_jwt_extended import JWTManager
 from flasgger import Swagger
 from websocket_handler import sock
@@ -68,7 +71,35 @@ app.register_blueprint(activities_blueprint, url_prefix="/activities")
 app.register_blueprint(roles_blueprint, url_prefix="/roles")
 app.register_blueprint(notifications_blueprint, url_prefix="/notifications")
 app.register_blueprint(sync_blueprint, url_prefix="/sync")
+_cleanup_worker_started = False
+
+
+@app.before_request
+def cleanup_expired_activities():
+    try:
+        purge_expired_activities_and_notify()
+    except Exception as exc:
+        print(f"Expired activity cleanup failed: {exc}")
+
+
+def _start_expired_cleanup_worker():
+    global _cleanup_worker_started
+    if _cleanup_worker_started:
+        return
+    _cleanup_worker_started = True
+
+    def _worker():
+        while True:
+            try:
+                purge_expired_activities_and_notify(force=True)
+            except Exception as exc:
+                print(f"Background expired activity cleanup failed: {exc}")
+            time.sleep(30)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
 
 if __name__ == "__main__":
     sync_permissions()
+    _start_expired_cleanup_worker()
     app.run(host="0.0.0.0", port=5000)

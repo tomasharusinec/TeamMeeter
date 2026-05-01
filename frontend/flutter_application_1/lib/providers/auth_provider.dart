@@ -77,10 +77,16 @@ class AuthProvider with ChangeNotifier {
     if (_token != null) {
       _apiService.setToken(_token);
       _user = await _loadCachedUser();
+      _apiService.setCacheNamespace(
+        _user?.idRegistration.toString() ?? _user?.username,
+      );
       try {
         final remoteUser = await _apiService.getCurrentUser();
         if (remoteUser != null) {
           _user = remoteUser;
+          _apiService.setCacheNamespace(
+            remoteUser.idRegistration.toString(),
+          );
           await _saveCachedUser(remoteUser);
           _localProfilePhotoPath = null;
           _localProfilePhotoRemoved = false;
@@ -124,6 +130,9 @@ class AuthProvider with ChangeNotifier {
       _user = await _apiService.getCurrentUser();
       _user ??= User(username: username);
       if (_user != null) {
+        _apiService.setCacheNamespace(
+          _user!.idRegistration.toString(),
+        );
         await _saveCachedUser(_user!);
       }
     } catch (e) {
@@ -169,6 +178,9 @@ class AuthProvider with ChangeNotifier {
         email: email,
       );
       if (_user != null) {
+        _apiService.setCacheNamespace(
+          _user!.idRegistration.toString(),
+        );
         await _saveCachedUser(_user!);
       }
     } catch (e) {
@@ -183,6 +195,7 @@ class AuthProvider with ChangeNotifier {
     _token = null;
     _user = null;
     _apiService.setToken(null);
+    _apiService.setCacheNamespace(null);
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
@@ -201,6 +214,9 @@ class AuthProvider with ChangeNotifier {
       final loadedUser = await _apiService.getCurrentUser();
       if (loadedUser != null) {
         _user = loadedUser;
+        _apiService.setCacheNamespace(
+          loadedUser.idRegistration.toString(),
+        );
         await _saveCachedUser(loadedUser);
         final prefs = await SharedPreferences.getInstance();
         _localProfilePhotoPath = null;
@@ -225,6 +241,9 @@ class AuthProvider with ChangeNotifier {
       final loadedUser = await _apiService.getCurrentUser();
       if (loadedUser != null) {
         _user = loadedUser;
+        _apiService.setCacheNamespace(
+          loadedUser.idRegistration.toString(),
+        );
         await _saveCachedUser(loadedUser);
         final prefs = await SharedPreferences.getInstance();
         _localProfilePhotoPath = null;

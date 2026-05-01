@@ -7,6 +7,7 @@ from psycopg2.extras import RealDictCursor
 from flask_sock import Sock
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
+from push_notifications import send_push_to_users
 
 load_dotenv()
 cipher_suite = Fernet(os.getenv("MESSAGE_ENCRYPTION_KEY"))
@@ -117,6 +118,21 @@ def create_message_notification(conn, message_id: int, conversation_id: int, sen
             "created_at": created_at.isoformat() if created_at else None,
         }
         broadcast_to_users(recipient_ids, notif_payload)
+        preview = text_preview(conn, message_id)
+        conv_name = conversation_name(conn, conversation_id)
+        send_push_to_users(
+            recipient_ids,
+            title=f"New message in {conv_name}",
+            body=f"{sender_username(conn, sender_id)}: {preview}",
+            data={
+                "notification_type": "1",
+                "notification_id": str(notification_id),
+                "conversation_id": str(conversation_id),
+                "conversation_name": conv_name,
+                "sender_username": sender_username(conn, sender_id),
+                "message_id": str(message_id),
+            },
+        )
 
     except:
         try:
@@ -178,6 +194,21 @@ def create_activity_notification(conn, activity_id: int, group_id: int, creator_
             "created_at": created_at.isoformat() if created_at else None,
         }
         broadcast_to_users(recipient_ids, notif_payload)
+        grp_name = group_name(conn, group_id)
+        activity_label = activity_name or f"Activity #{activity_id}"
+        send_push_to_users(
+            recipient_ids,
+            title=f"New activity {activity_label}",
+            body=f"New group activity in {grp_name}",
+            data={
+                "notification_type": "2",
+                "notification_id": str(notification_id),
+                "group_id": str(group_id),
+                "group_name": grp_name,
+                "activity_id": str(activity_id),
+                "activity_name": activity_label,
+            },
+        )
 
     except:
         try:
@@ -241,6 +272,65 @@ def handle_send_message(ws, conn, user_id, username, data):
         }
         json_payload = json.dumps(error_payload)
         ws.send(json_payload)
+
+
+def sender_username(conn, sender_id: int) -> str:
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute('SELECT username FROM "user" WHERE id_registration = %s', (sender_id,))
+            row = cur.fetchone()
+            if row and row.get("username"):
+                return row["username"]
+    except:
+        pass
+    return "Pouzivatel"
+
+
+def text_preview(conn, message_id: int) -> str:
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT text FROM message WHERE id = %s", (message_id,))
+            row = cur.fetchone()
+            if row and row.get("text"):
+                decrypted = cipher_suite.decrypt(bytes(row["text"])).decode()
+                clean = decrypted.strip()
+                if clean:
+                    return clean[:120]
+    except:
+        pass
+    return "Poslal(a) novu spravu"
+
+
+def conversation_name(conn, conversation_id: int) -> str:
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT name FROM conversation WHERE id = %s", (conversation_id,))
+            row = cur.fetchone()
+            if row:
+                name = row.get("name")
+                if isinstance(name, str):
+                    cleaned = name.strip()
+                    if cleaned:
+                        return cleaned
+    except:
+        pass
+    return f"Conversation #{conversation_id}"
+
+
+def group_name(conn, group_id: int) -> str:
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute('SELECT name FROM "group" WHERE id_group = %s', (group_id,))
+            row = cur.fetchone()
+            if row:
+                name = row.get("name")
+                if isinstance(name, str):
+                    cleaned = name.strip()
+                    if cleaned:
+                        return cleaned
+    except:
+        pass
+    return f"Group #{group_id}"
 
 # Function below was polished with AI (Gemini)
 # Handles message with file attachment via websocket. Requires group membership.

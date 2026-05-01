@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Flutter Application 1</string>
+	<string>TeamMeeter</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>flutter_application_1</string>
+	<string>TeamMeeter</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -30,6 +30,12 @@
 	<string>Aplikácia potrebuje prístup ku galérii pre výber profilovej fotky.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Aplikácia potrebuje kameru na skenovanie QR kódov pre pripojenie do skupiny.</string>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>Aplikácia používa notifikácie na nové správy a pozvánky.</string>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
+	<key>aps-environment</key>
+	<string>development</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

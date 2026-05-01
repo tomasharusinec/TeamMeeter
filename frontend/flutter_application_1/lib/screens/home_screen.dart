@@ -10,6 +10,7 @@ import '../providers/theme_provider.dart';
 import '../services/permission_service.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../services/push_notification_service.dart';
 import '../utils/snackbar_utils.dart';
 import '../models/activity.dart';
 import '../models/group.dart';
@@ -37,17 +38,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isCreatingGroup = false;
   bool _showOfflineBanner = false;
   bool _hasPendingSync = false;
+  bool _hasAnyNotifications = false;
+  int _activitiesLoadRequestId = 0;
+  int _groupsLoadRequestId = 0;
   Timer? _offlineSyncTimer;
+  StreamSubscription<Map<String, dynamic>>? _notificationTapSubscription;
+
+  bool _isExpiredActivity(Activity activity) {
+    final deadline = activity.parsedDeadline;
+    if (deadline == null) return false;
+    return !deadline.isAfter(DateTime.now());
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadData();
+    _initPushNotifications();
     _refreshOfflineBannerState();
     _offlineSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       await _runOfflineSyncInBackground();
       await _refreshOfflineBannerState();
+      await _refreshNotificationIndicator();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -59,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _offlineSyncTimer?.cancel();
+    _notificationTapSubscription?.cancel();
     super.dispose();
   }
 
@@ -66,7 +80,110 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _runOfflineSyncInBackground();
+      _refreshNotificationIndicator();
+      _syncPushTokenSilently();
     }
+  }
+
+  Future<void> _initPushNotifications() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final api = authProvider.apiService;
+      await PushNotificationService.instance.syncPushTokenWithBackend(api);
+      _notificationTapSubscription?.cancel();
+      _notificationTapSubscription = PushNotificationService
+          .instance
+          .onNotificationTap
+          .listen(_handlePushTapData);
+      final initialData = PushNotificationService.instance.takeInitialTapData();
+      if (initialData != null) {
+        _handlePushTapData(initialData);
+      }
+    } catch (_) {
+      // App remains functional even without push setup.
+    }
+  }
+
+  Future<void> _syncPushTokenSilently() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await PushNotificationService.instance.syncPushTokenWithBackend(
+        authProvider.apiService,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _handlePushTapData(Map<String, dynamic> data) async {
+    if (!mounted) return;
+
+    final rawType = data['notification_type']?.toString();
+    final type = int.tryParse(rawType ?? '');
+    final conversationIdRaw = data['conversation_id']?.toString();
+    final conversationId = int.tryParse(conversationIdRaw ?? '');
+    final activityIdRaw = data['activity_id']?.toString();
+    final activityId = int.tryParse(activityIdRaw ?? '');
+
+    if (conversationId != null && conversationId > 0) {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      String title = 'Conversation #$conversationId';
+      final titleFromPush = data['conversation_name']?.toString().trim();
+      if (titleFromPush != null && titleFromPush.isNotEmpty) {
+        title = titleFromPush;
+      }
+      try {
+        final conversation = await api.getConversation(conversationId);
+        final resolvedTitle = conversation['name']?.toString().trim();
+        if (resolvedTitle != null && resolvedTitle.isNotEmpty) {
+          title = resolvedTitle;
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              ChatScreen(conversationId: conversationId, title: title),
+        ),
+      );
+      if (!mounted) return;
+      await _refreshNotificationIndicator();
+      return;
+    }
+
+    if (type == 1) {
+      // For message notifications, fallback to notifications list when payload
+      // misses conversation id (older push payloads).
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+      if (!mounted) return;
+      await _refreshNotificationIndicator();
+      return;
+    }
+
+    if ((type == 2 || type == 5) && activityId != null && activityId > 0) {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      try {
+        final activity = await api.getActivityDetails(activityId);
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (_) =>
+              ActivityDetailDialog(activity: activity, onDeleted: _loadData),
+        );
+        if (!mounted) return;
+        await _loadData();
+        return;
+      } catch (_) {
+        // If detail cannot be fetched, fallback to notifications list below.
+      }
+    }
+
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+    if (!mounted) return;
+    await _refreshNotificationIndicator();
   }
 
   Future<void> _loadData() async {
@@ -74,12 +191,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Future.wait([
       _loadActivities(showError: false),
       _loadGroups(showError: false),
+      _refreshNotificationIndicator(),
     ]);
     await _refreshOfflineBannerState();
     if (mounted) setState(() => _isLoading = false);
   }
 
+  Future<void> _refreshNotificationIndicator() async {
+    try {
+      if (!mounted) return;
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      final hasUnread = await api.hasUnreadNotifications();
+      if (!mounted) return;
+      setState(() => _hasAnyNotifications = hasUnread);
+    } catch (_) {
+      // Keep previous indicator state if refresh fails.
+    }
+  }
+
   Future<void> _refreshOfflineBannerState() async {
+    if (!mounted) return;
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     final pending = await api.getPendingOfflineChangesCount();
     final reachable = await api.isServerReachable();
@@ -92,14 +223,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _runOfflineSyncInBackground() async {
     try {
+      if (!mounted) return;
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final pendingBefore = await api.getPendingOfflineChangesCount();
       await api.syncPendingActivityOperations();
       final pendingAfter = await api.getPendingOfflineChangesCount();
       final reachable = await api.isServerReachable();
       final syncedSomething = pendingAfter < pendingBefore;
+      // Keep My Tasks continuously fresh in background (server when online,
+      // cache when offline) without blocking UI.
+      await _loadActivities(showError: false);
       if (reachable && syncedSomething && mounted) {
-        await _loadActivities(showError: false);
         await _loadGroups(showError: false, silent: true);
       }
       await _refreshOfflineBannerState();
@@ -107,13 +241,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadActivities({bool showError = true}) async {
+    final requestId = ++_activitiesLoadRequestId;
     try {
+      if (!mounted) return;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final api = authProvider.apiService;
       final activities = await api.getMyActivities();
-      if (mounted) setState(() => _activities = activities);
+      if (!mounted || requestId != _activitiesLoadRequestId) return;
+      setState(() => _activities = activities);
     } catch (e) {
-      if (!mounted || !showError) return;
+      if (!mounted || requestId != _activitiesLoadRequestId || !showError) {
+        return;
+      }
       context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
@@ -124,15 +263,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadGroups({bool showError = true, bool silent = false}) async {
+    final requestId = ++_groupsLoadRequestId;
     if (!silent && mounted) setState(() => _isGroupsLoading = true);
     try {
+      if (!mounted) return;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final api = authProvider.apiService;
       final groups = await api.getGroups();
-      if (mounted) setState(() => _groups = groups);
+      if (!mounted || requestId != _groupsLoadRequestId) return;
+      setState(() => _groups = groups);
       await _refreshOfflineBannerState();
     } catch (e) {
-      if (!mounted || !showError) return;
+      if (!mounted || requestId != _groupsLoadRequestId || !showError) return;
       context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
@@ -140,7 +282,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
     } finally {
-      if (!silent && mounted) setState(() => _isGroupsLoading = false);
+      if (!silent && mounted && requestId == _groupsLoadRequestId) {
+        setState(() => _isGroupsLoading = false);
+      }
     }
   }
 
@@ -176,13 +320,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _buildTopBar(),
               if (_showOfflineBanner) _buildOfflineSyncBanner(),
               Expanded(
-                child: _currentNavIndex == 3
-                    ? _buildGroupsView()
-                    : _currentNavIndex == 2
-                    ? _buildChatView()
-                    : _currentNavIndex == 0
-                    ? _buildCalendarView()
-                    : _buildTasksView(),
+                child: IndexedStack(
+                  index: _currentNavIndex,
+                  children: [
+                    _buildCalendarView(),
+                    _buildTasksView(),
+                    _buildChatView(),
+                    _buildGroupsView(),
+                  ],
+                ),
               ),
             ],
           ),
@@ -230,6 +376,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const NotificationsScreen()),
               );
+              if (!mounted) return;
+              await _refreshNotificationIndicator();
             },
             icon: Stack(
               children: [
@@ -238,18 +386,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   color: Colors.white,
                   size: 28,
                 ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE57373),
-                      shape: BoxShape.circle,
+                if (_hasAnyNotifications)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE57373),
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -312,13 +461,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
 
-    final todoActivities = _activities
+    final visibleActivities = _activities
+        .where((a) => !_isExpiredActivity(a))
+        .toList();
+
+    final todoActivities = visibleActivities
         .where((a) => a.status == 'todo')
         .toList();
-    final inProgressActivities = _activities
+    final inProgressActivities = visibleActivities
         .where((a) => a.status == 'in_progress')
         .toList();
-    final completedActivities = _activities
+    final completedActivities = visibleActivities
         .where((a) => a.status == 'completed')
         .toList();
 
@@ -535,12 +688,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _setActivityStatus(int activityId, String newStatus) async {
     setState(() => _isUpdatingActivityStatus = true);
+    final previousActivities = List<Activity>.from(_activities);
+    setState(() {
+      _activities = _activities.map((activity) {
+        if (activity.idActivity != activityId) return activity;
+        return activity.copyWith(status: newStatus, hasPendingSync: true);
+      }).toList();
+    });
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       await api.updateActivityStatus(activityId, newStatus);
-      await _loadActivities(showError: false);
     } catch (e) {
       if (!mounted) return;
+      setState(() => _activities = previousActivities);
       context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
@@ -1388,9 +1548,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return GestureDetector(
       onTap: () {
         setState(() => _currentNavIndex = index);
-        if (index == 3 || index == 0) {
-          _loadGroups();
-        }
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

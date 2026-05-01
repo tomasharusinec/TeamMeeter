@@ -160,3 +160,32 @@ CREATE TABLE activity_notification (
     CONSTRAINT fk_an_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
     CONSTRAINT fk_an_activity FOREIGN KEY (activity_id) REFERENCES activity(id_activity) ON DELETE CASCADE
 );
+
+CREATE TABLE activity_completed_notification (
+    notification_id INT PRIMARY KEY,
+    activity_id INT NOT NULL,
+    completed_by_user_id INT NOT NULL,
+    CONSTRAINT fk_acn_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
+    CONSTRAINT fk_acn_activity FOREIGN KEY (activity_id) REFERENCES activity(id_activity) ON DELETE CASCADE,
+    CONSTRAINT fk_acn_completer FOREIGN KEY (completed_by_user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+);
+
+CREATE TABLE activity_expired_notification (
+    notification_id INT PRIMARY KEY,
+    activity_name VARCHAR(255) NOT NULL,
+    group_name VARCHAR(255),
+    expired_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_aen_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE
+);
+
+CREATE TABLE user_push_token (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    platform VARCHAR(20),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_upt_user FOREIGN KEY (user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_user_push_token_user_id ON user_push_token (user_id);

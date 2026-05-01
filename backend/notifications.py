@@ -5,6 +5,7 @@ from psycopg2.extras import RealDictCursor
 from flask import Blueprint
 from helper_func import get_current_user_id, db, load_yaml
 from websocket_handler import broadcast_to_users
+from push_notifications import send_push_to_users
 
 notifications_blueprint = Blueprint('notifications', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -13,6 +14,8 @@ NOTIFICATION_TYPE_MESSAGE = 1
 NOTIFICATION_TYPE_GROUP_ACTIVITY_CREATED = 2
 NOTIFICATION_TYPE_MEMBERSHIP_REQUEST = 3
 NOTIFICATION_TYPE_ACTIVITY_ASSIGNED = 4
+NOTIFICATION_TYPE_ACTIVITY_COMPLETED = 5
+NOTIFICATION_TYPE_ACTIVITY_EXPIRED = 6
 
 
 def _safe_broadcast_notification(recipient_user_id: int, payload: dict):
@@ -74,6 +77,19 @@ def create_membership_request_notification(
             "status": "pending",
         },
     )
+    send_push_to_users(
+        [recipient_user_id],
+        title=f"New invitation to {target_name}",
+        body=f"From {requester_username}",
+        data={
+            "notification_type": str(NOTIFICATION_TYPE_MEMBERSHIP_REQUEST),
+            "notification_id": str(notif_id),
+            "requester_username": requester_username,
+            "target_type": target_type,
+            "target_id": str(target_id),
+            "target_name": target_name,
+        },
+    )
 
 
 def create_activity_assigned_notification(
@@ -125,6 +141,232 @@ def create_activity_assigned_notification(
             "assigned_by_username": assigned_by_username,
         },
     )
+    send_push_to_users(
+        [recipient_user_id],
+        title=f"New assignment in {activity_name}",
+        body=f"Assigned by {assigned_by_username}",
+        data={
+            "notification_type": str(NOTIFICATION_TYPE_ACTIVITY_ASSIGNED),
+            "notification_id": str(notif_id),
+            "activity_id": str(activity_id),
+            "activity_name": activity_name,
+            "assigned_by_username": assigned_by_username,
+        },
+    )
+
+
+def create_activity_completed_notification(
+    recipient_user_ids: list[int],
+    activity_id: int,
+    activity_name: str,
+    completed_by_user_id: int,
+    completed_by_username: str,
+):
+    unique_recipient_ids = sorted({uid for uid in recipient_user_ids if uid is not None})
+    if not unique_recipient_ids:
+        return
+
+    with db.cursor(cursor_factory=RealDictCursor) as local_cursor:
+        local_cursor.execute(
+            """
+            INSERT INTO notification (type)
+            VALUES (%s)
+            RETURNING id_notification, created_at
+            """,
+            (NOTIFICATION_TYPE_ACTIVITY_COMPLETED,),
+        )
+        notif = local_cursor.fetchone()
+        notif_id = notif["id_notification"]
+        created_at = notif["created_at"]
+
+        for uid in unique_recipient_ids:
+            local_cursor.execute(
+                """
+                INSERT INTO user_notification (notification_id, user_id)
+                VALUES (%s, %s)
+                """,
+                (notif_id, uid),
+            )
+
+        local_cursor.execute(
+            """
+            INSERT INTO activity_completed_notification
+            (notification_id, activity_id, completed_by_user_id)
+            VALUES (%s, %s, %s)
+            """,
+            (notif_id, activity_id, completed_by_user_id),
+        )
+        db.commit()
+
+    for uid in unique_recipient_ids:
+        _safe_broadcast_notification(
+            uid,
+            {
+                "type": "new_notification",
+                "notification_id": notif_id,
+                "notification_type": NOTIFICATION_TYPE_ACTIVITY_COMPLETED,
+                "created_at": created_at.isoformat() if created_at else None,
+                "activity_id": activity_id,
+                "activity_name": activity_name,
+                "completed_by_username": completed_by_username,
+            },
+        )
+
+    send_push_to_users(
+        unique_recipient_ids,
+        title=f"Activity completed {activity_name}",
+        body=f"Completed by {completed_by_username}",
+        data={
+            "notification_type": str(NOTIFICATION_TYPE_ACTIVITY_COMPLETED),
+            "notification_id": str(notif_id),
+            "activity_id": str(activity_id),
+            "activity_name": activity_name,
+            "completed_by_username": completed_by_username,
+        },
+    )
+
+
+def create_activity_expired_notification(
+    recipient_user_ids: list[int],
+    activity_name: str,
+    group_name: str | None = None,
+):
+    unique_recipient_ids = sorted({uid for uid in recipient_user_ids if uid is not None})
+    if not unique_recipient_ids:
+        return
+
+    with db.cursor(cursor_factory=RealDictCursor) as local_cursor:
+        local_cursor.execute(
+            """
+            INSERT INTO notification (type)
+            VALUES (%s)
+            RETURNING id_notification, created_at
+            """,
+            (NOTIFICATION_TYPE_ACTIVITY_EXPIRED,),
+        )
+        notif = local_cursor.fetchone()
+        notif_id = notif["id_notification"]
+        created_at = notif["created_at"]
+
+        for uid in unique_recipient_ids:
+            local_cursor.execute(
+                """
+                INSERT INTO user_notification (notification_id, user_id)
+                VALUES (%s, %s)
+                """,
+                (notif_id, uid),
+            )
+
+        local_cursor.execute(
+            """
+            INSERT INTO activity_expired_notification
+            (notification_id, activity_name, group_name, expired_at)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            """,
+            (notif_id, activity_name, group_name),
+        )
+        db.commit()
+
+    for uid in unique_recipient_ids:
+        _safe_broadcast_notification(
+            uid,
+            {
+                "type": "new_notification",
+                "notification_id": notif_id,
+                "notification_type": NOTIFICATION_TYPE_ACTIVITY_EXPIRED,
+                "created_at": created_at.isoformat() if created_at else None,
+                "expired_activity_name": activity_name,
+                "expired_group_name": group_name,
+            },
+        )
+
+    location = group_name if group_name else "your workspace"
+    send_push_to_users(
+        unique_recipient_ids,
+        title=f"Activity expired {activity_name}",
+        body=f"Deadline passed in {location}. Activity was removed.",
+        data={
+            "notification_type": str(NOTIFICATION_TYPE_ACTIVITY_EXPIRED),
+            "activity_name": activity_name,
+            "group_name": group_name or "",
+        },
+    )
+
+
+@notifications_blueprint.route('/push-token', methods=["POST"])
+@jwt_required()
+def register_push_token():
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    if not request.is_json:
+        return {"message": "Invalid format!"}, 400
+
+    token = str(request.json.get("token", "")).strip()
+    platform = str(request.json.get("platform", "")).strip().lower() or None
+
+    if not token:
+        return {"message": "token is required"}, 400
+
+    try:
+        with db.cursor() as local_cursor:
+            local_cursor.execute(
+                """
+                INSERT INTO user_push_token (user_id, token, platform, is_active, last_seen)
+                VALUES (%s, %s, %s, TRUE, CURRENT_TIMESTAMP)
+                ON CONFLICT (token)
+                DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    platform = EXCLUDED.platform,
+                    is_active = TRUE,
+                    last_seen = CURRENT_TIMESTAMP
+                """,
+                (current_user_id, token, platform),
+            )
+            db.commit()
+    except Exception:
+        db.rollback()
+        return {"message": "Failed to register push token!"}, 500
+
+    return {"message": "Push token registered successfully"}, 200
+
+
+@notifications_blueprint.route('/push-token', methods=["DELETE"])
+@jwt_required()
+def unregister_push_token():
+    identity = get_jwt_identity()
+    current_user_id = get_current_user_id(identity)
+
+    token = ""
+    if request.is_json:
+        token = str(request.json.get("token", "")).strip()
+
+    try:
+        with db.cursor() as local_cursor:
+            if token:
+                local_cursor.execute(
+                    """
+                    UPDATE user_push_token
+                    SET is_active = FALSE
+                    WHERE user_id = %s AND token = %s
+                    """,
+                    (current_user_id, token),
+                )
+            else:
+                local_cursor.execute(
+                    """
+                    UPDATE user_push_token
+                    SET is_active = FALSE
+                    WHERE user_id = %s
+                    """,
+                    (current_user_id,),
+                )
+            db.commit()
+    except Exception:
+        db.rollback()
+        return {"message": "Failed to unregister push token!"}, 500
+
+    return {"message": "Push token unregistered successfully"}, 200
 
 @notifications_blueprint.route('', methods=["GET"])
 @jwt_required()
@@ -140,6 +382,10 @@ def get_notifications():
             n.id_notification,
             n.type,
             n.created_at,
+            m_msg.sender_id AS message_sender_id,
+            m_msg.conversation_id AS message_conversation_id,
+            u_msg.username AS message_sender_username,
+            c_msg.name AS message_conversation_name,
             mrn.status AS membership_status,
             mrn.target_type AS membership_target_type,
             mrn.target_id AS membership_target_id,
@@ -148,9 +394,19 @@ def get_notifications():
             c.name AS conversation_name,
             aan.activity_id AS assigned_activity_id,
             a.name AS assigned_activity_name,
-            u_assigner.username AS assigned_by_username
+            u_assigner.username AS assigned_by_username,
+            acn.activity_id AS completed_activity_id,
+            a_completed.name AS completed_activity_name,
+            u_completer.username AS completed_by_username,
+            aen.activity_name AS expired_activity_name,
+            aen.group_name AS expired_group_name,
+            aen.expired_at AS expired_at
         FROM notification n
         JOIN user_notification un ON n.id_notification = un.notification_id
+        LEFT JOIN message_notification mn ON n.id_notification = mn.notification_id
+        LEFT JOIN message m_msg ON mn.message_id = m_msg.id
+        LEFT JOIN "user" u_msg ON m_msg.sender_id = u_msg.id_registration
+        LEFT JOIN conversation c_msg ON m_msg.conversation_id = c_msg.id
         LEFT JOIN membership_request_notification mrn ON n.id_notification = mrn.notification_id
         LEFT JOIN "user" u_req ON mrn.requester_user_id = u_req.id_registration
         LEFT JOIN "group" g ON mrn.target_type = 'group' AND mrn.target_id = g.id_group
@@ -158,6 +414,10 @@ def get_notifications():
         LEFT JOIN activity_assignment_notification aan ON n.id_notification = aan.notification_id
         LEFT JOIN activity a ON aan.activity_id = a.id_activity
         LEFT JOIN "user" u_assigner ON aan.assigned_by_user_id = u_assigner.id_registration
+        LEFT JOIN activity_completed_notification acn ON n.id_notification = acn.notification_id
+        LEFT JOIN activity a_completed ON acn.activity_id = a_completed.id_activity
+        LEFT JOIN "user" u_completer ON acn.completed_by_user_id = u_completer.id_registration
+        LEFT JOIN activity_expired_notification aen ON n.id_notification = aen.notification_id
         WHERE un.user_id = %s
         ORDER BY n.created_at DESC
         """,

@@ -6,8 +6,13 @@ import 'providers/theme_provider.dart';
 import 'theme/app_colors.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/push_notification_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await PushNotificationService.instance.ensureInitialized();
+  } catch (_) {}
   runApp(const MyApp());
 }
 
@@ -160,14 +165,16 @@ class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
                         shape: BoxShape.circle,
                         color: Colors.white.withAlpha(18),
                         border: Border.all(
-                          color: Colors.white.withAlpha((80 + (90 * glow)).toInt()),
+                          color: Colors.white.withAlpha(
+                            (80 + (90 * glow)).toInt(),
+                          ),
                           width: 2,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFE57373).withAlpha(
-                              (90 + (120 * glow)).toInt(),
-                            ),
+                            color: const Color(
+                              0xFFE57373,
+                            ).withAlpha((90 + (120 * glow)).toInt()),
                             blurRadius: 24 + (16 * glow),
                             spreadRadius: 2,
                           ),

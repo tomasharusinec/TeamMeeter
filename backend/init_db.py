@@ -115,6 +115,52 @@ def _migrate_notification_tables(cursor, conn):
         )
         """
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS activity_completed_notification (
+            notification_id INT PRIMARY KEY,
+            activity_id INT NOT NULL,
+            completed_by_user_id INT NOT NULL,
+            CONSTRAINT fk_acn_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE,
+            CONSTRAINT fk_acn_activity FOREIGN KEY (activity_id) REFERENCES activity(id_activity) ON DELETE CASCADE,
+            CONSTRAINT fk_acn_completer FOREIGN KEY (completed_by_user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS activity_expired_notification (
+            notification_id INT PRIMARY KEY,
+            activity_name VARCHAR(255) NOT NULL,
+            group_name VARCHAR(255),
+            expired_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_aen_notif FOREIGN KEY (notification_id) REFERENCES notification(id_notification) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.commit()
+
+
+def _migrate_push_token_table(cursor, conn):
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_push_token (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            platform VARCHAR(20),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            last_seen TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT fk_upt_user FOREIGN KEY (user_id) REFERENCES "user"(id_registration) ON DELETE CASCADE
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_push_token_user_id
+        ON user_push_token (user_id)
+        """
+    )
     conn.commit()
 
 # This function was generated using AI (Gemini) with slight manual refinements
@@ -198,6 +244,7 @@ def init_db():
             _migrate_activity_status_column(cursor, conn)
             _migrate_group_capacity_column(cursor, conn)
             _migrate_notification_tables(cursor, conn)
+            _migrate_push_token_table(cursor, conn)
         except Exception as e:
             conn.rollback()
             print(f"Error applying migrations: {e}")

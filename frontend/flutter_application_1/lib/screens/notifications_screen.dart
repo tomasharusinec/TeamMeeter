@@ -22,10 +22,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _loadNotifications() async {
-    if (mounted) setState(() => _isLoading = true);
+    final shouldShowBlockingLoader = _notifications.isEmpty;
+    if (mounted && shouldShowBlockingLoader) {
+      setState(() => _isLoading = true);
+    }
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final notifications = await api.getNotifications();
+      await api.markNotificationsSeen();
       if (!mounted) return;
       setState(() => _notifications = notifications);
     } catch (e) {
@@ -37,22 +41,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && shouldShowBlockingLoader) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _deleteNotification(int notificationId) async {
+    final previous = List<Map<String, dynamic>>.from(_notifications);
+    setState(
+      () => _notifications.removeWhere(
+        (n) => n['id_notification'] == notificationId,
+      ),
+    );
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       await api.deleteNotification(notificationId);
-      if (!mounted) return;
-      setState(
-        () => _notifications.removeWhere(
-          (n) => n['id_notification'] == notificationId,
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
+      setState(() => _notifications = previous);
       context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
@@ -87,20 +94,61 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String _notificationTitle(Map<String, dynamic> notification) {
     final type = (notification['type'] as num?)?.toInt() ?? 0;
     if (type == 3) {
-      final requester = notification['requester_username']?.toString() ?? 'Niekto';
-      final targetType = notification['membership_target_type']?.toString() ?? '';
+      final requester =
+          notification['requester_username']?.toString() ?? 'Niekto';
+      final targetType =
+          notification['membership_target_type']?.toString() ?? '';
       final targetName = targetType == 'group'
           ? notification['group_name']?.toString() ?? 'skupiny'
           : notification['conversation_name']?.toString() ?? 'konverzácie';
       return '$requester ťa pozýva do $targetName';
     }
     if (type == 4) {
-      final activity = notification['assigned_activity_name']?.toString() ?? 'aktivity';
-      final assigner = notification['assigned_by_username']?.toString() ?? 'Niekto';
+      final activity =
+          notification['assigned_activity_name']?.toString() ?? 'aktivity';
+      final assigner =
+          notification['assigned_by_username']?.toString() ?? 'Niekto';
       return '$assigner ti pridelil aktivitu: $activity';
     }
-    if (type == 1) return 'Nová správa';
+    if (type == 1) {
+      final senderUsername = notification['message_sender_username']
+          ?.toString()
+          .trim();
+      final senderId = (notification['message_sender_id'] as num?)?.toInt();
+      final sender = (senderUsername != null && senderUsername.isNotEmpty)
+          ? senderUsername
+          : (senderId != null ? 'User #$senderId' : 'A user');
+
+      final conversationRaw = notification['message_conversation_name']
+          ?.toString()
+          .trim();
+      final conversationId = (notification['message_conversation_id'] as num?)
+          ?.toInt();
+      final conversationName =
+          (conversationRaw != null && conversationRaw.isNotEmpty)
+          ? conversationRaw
+          : (conversationId != null
+                ? 'Conversation #$conversationId'
+                : 'a conversation');
+      return '$sender sent a new message into conversation $conversationName';
+    }
     if (type == 2) return 'Nová aktivita v skupine';
+    if (type == 5) {
+      final activity =
+          notification['completed_activity_name']?.toString() ?? 'aktivity';
+      final completer =
+          notification['completed_by_username']?.toString() ?? 'Niekto';
+      return '$completer dokončil aktivitu: $activity';
+    }
+    if (type == 6) {
+      final activity =
+          notification['expired_activity_name']?.toString() ?? 'aktivita';
+      final group = notification['expired_group_name']?.toString();
+      if (group != null && group.trim().isNotEmpty) {
+        return 'Aktivita "$activity" bola zmazaná po deadlin-e v skupine $group';
+      }
+      return 'Aktivita "$activity" bola zmazaná po deadlin-e';
+    }
     return 'Notifikácia';
   }
 
@@ -125,7 +173,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.white))
+            ? const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              )
             : _notifications.isEmpty
             ? const Center(
                 child: Text(
@@ -142,8 +192,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     final notification = _notifications[index];
                     final notificationId =
                         (notification['id_notification'] as num?)?.toInt();
-                    final status =
-                        notification['membership_status']?.toString().toLowerCase();
+                    final status = notification['membership_status']
+                        ?.toString()
+                        .toLowerCase();
                     final isMembershipPending = status == 'pending';
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
@@ -178,7 +229,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             const SizedBox(height: 8),
                             Row(
                               children: [
-                                if (isMembershipPending && notificationId != null)
+                                if (isMembershipPending &&
+                                    notificationId != null)
                                   ElevatedButton(
                                     onPressed: () => _respondMembershipRequest(
                                       notificationId: notificationId,
@@ -190,9 +242,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     ),
                                     child: const Text('Prijať'),
                                   ),
-                                if (isMembershipPending && notificationId != null)
+                                if (isMembershipPending &&
+                                    notificationId != null)
                                   const SizedBox(width: 8),
-                                if (isMembershipPending && notificationId != null)
+                                if (isMembershipPending &&
+                                    notificationId != null)
                                   OutlinedButton(
                                     onPressed: () => _respondMembershipRequest(
                                       notificationId: notificationId,
@@ -200,7 +254,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     ),
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: Colors.white70,
-                                      side: const BorderSide(color: Colors.white54),
+                                      side: const BorderSide(
+                                        color: Colors.white54,
+                                      ),
                                     ),
                                     child: const Text('Odmietnuť'),
                                   ),

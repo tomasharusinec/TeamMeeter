@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 import '../models/activity.dart';
@@ -22,6 +23,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _isLoading = true;
   late DateTime _displayedMonth;
   int _weekIndex = 0;
+  Timer? _clockRefreshTimer;
 
   static const _dayLabels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
@@ -32,10 +34,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _displayedMonth = DateTime(now.year, now.month, 1);
     _weekIndex = _findWeekIndexForDate(now, _getWeeksForMonth(_displayedMonth));
     _loadActivities();
+    _clockRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadActivities() async {
-    setState(() => _isLoading = true);
+    final shouldShowBlockingLoader = _activities.isEmpty;
+    if (shouldShowBlockingLoader) {
+      setState(() => _isLoading = true);
+    }
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final activities = await api.getMyActivities();
@@ -45,7 +61,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     } catch (e) {
       // show empty state
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && shouldShowBlockingLoader) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -154,10 +172,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   /// Get activities for a specific day
   List<Activity> _getActivitiesForDay(DateTime day) {
+    final now = DateTime.now();
     return _activities.where((a) {
       if (a.status == 'completed') return false;
       final deadline = a.parsedDeadline;
       if (deadline == null) return false;
+      if (!deadline.isAfter(now)) return false;
       return deadline.year == day.year &&
           deadline.month == day.month &&
           deadline.day == day.day;

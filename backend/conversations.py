@@ -27,6 +27,11 @@ def get_conversations():
         FROM conversation c
         JOIN participant p ON c.id = p.conversation_id
         WHERE p.user_id = %s
+          AND NOT EXISTS (
+              SELECT 1
+              FROM "group" g
+              WHERE g.conversation_id = c.id
+          )
     """, (current_user_id,))
     conversations = cursor.fetchall()
     return {"message": "Success", "conversations": conversations}

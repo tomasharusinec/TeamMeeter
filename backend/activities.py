@@ -4,12 +4,120 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint
 from datetime import datetime
+import threading
+import time
 from websocket_handler import create_activity_notification, get_db_connection
 from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml, parse_client_deadline
-from notifications import create_activity_assigned_notification
+from notifications import (
+    create_activity_assigned_notification,
+    create_activity_completed_notification,
+    create_activity_expired_notification,
+)
+from push_notifications import send_push_to_users
 
 activities_blueprint = Blueprint('activities', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
+_cleanup_lock = threading.Lock()
+_last_cleanup_timestamp = 0.0
+
+
+def purge_expired_activities_and_notify(force: bool = False):
+    global _last_cleanup_timestamp
+
+    now_ts = time.time()
+    if not force and now_ts - _last_cleanup_timestamp < 60:
+        return
+    if not _cleanup_lock.acquire(blocking=False):
+        return
+
+    try:
+        now_ts = time.time()
+        if not force and now_ts - _last_cleanup_timestamp < 60:
+            return
+        _last_cleanup_timestamp = now_ts
+
+        with db.cursor(cursor_factory=RealDictCursor) as local_cursor:
+            local_cursor.execute(
+                """
+                SELECT a.id_activity, a.name AS activity_name, a.group_id, g.name AS group_name
+                FROM activity a
+                LEFT JOIN "group" g ON a.group_id = g.id_group
+                WHERE a.deadline IS NOT NULL
+                  AND a.deadline <= CURRENT_TIMESTAMP
+                """
+            )
+            expired = local_cursor.fetchall()
+
+        if not expired:
+            return
+
+        for activity in expired:
+            activity_id = activity["id_activity"]
+            activity_name = activity.get("activity_name") or f"Activity #{activity_id}"
+            group_name = activity.get("group_name")
+
+            with db.cursor(cursor_factory=RealDictCursor) as local_cursor:
+                local_cursor.execute(
+                    """
+                    SELECT DISTINCT assigned_user_id FROM (
+                        SELECT au.id_user AS assigned_user_id
+                        FROM activity_user au
+                        WHERE au.id_activity = %s
+                        UNION
+                        SELECT ur.user_id AS assigned_user_id
+                        FROM activity_role ar
+                        JOIN user_role ur ON ar.role_id = ur.role_id
+                        WHERE ar.activity_id = %s
+                        UNION
+                        SELECT a.creator_id AS assigned_user_id
+                        FROM activity a
+                        WHERE a.id_activity = %s
+                    ) assigned
+                    """,
+                    (activity_id, activity_id, activity_id),
+                )
+                recipient_rows = local_cursor.fetchall()
+                recipient_ids = [
+                    row["assigned_user_id"]
+                    for row in recipient_rows
+                    if row.get("assigned_user_id") is not None
+                ]
+
+            try:
+                create_activity_expired_notification(
+                    recipient_user_ids=recipient_ids,
+                    activity_name=activity_name,
+                    group_name=group_name,
+                )
+            except Exception as exc:
+                print(f"Failed to create expired activity notification: {exc}")
+                try:
+                    location = group_name if group_name else "your workspace"
+                    send_push_to_users(
+                        recipient_ids,
+                        title=f"Activity expired {activity_name}",
+                        body=f"Deadline passed in {location}. Activity was removed.",
+                        data={
+                            "notification_type": "6",
+                            "activity_name": activity_name,
+                            "group_name": group_name or "",
+                        },
+                    )
+                except Exception as push_exc:
+                    print(f"Failed to send expired activity fallback push: {push_exc}")
+
+            try:
+                with db.cursor() as local_cursor:
+                    local_cursor.execute(
+                        "DELETE FROM activity WHERE id_activity = %s",
+                        (activity_id,),
+                    )
+                db.commit()
+            except Exception as delete_exc:
+                db.rollback()
+                print(f"Failed to delete expired activity {activity_id}: {delete_exc}")
+    finally:
+        _cleanup_lock.release()
 
 # Gets basic activity info (group_id and creator_id).
 def get_activity_info(activity_id):
@@ -265,6 +373,13 @@ def update_activity(activity_id):
         except ValueError:
             return {"message": "Invalid date format!"}, 400
 
+    cursor.execute("SELECT status, name FROM activity WHERE id_activity = %s", (activity_id,))
+    existing_activity = cursor.fetchone()
+    previous_status = existing_activity["status"] if existing_activity else None
+    activity_name_for_notification = (
+        existing_activity["name"] if existing_activity and existing_activity.get("name") else f"Activity #{activity_id}"
+    )
+
     try:
         cursor.execute("""
             UPDATE activity SET
@@ -278,6 +393,86 @@ def update_activity(activity_id):
     except:
         db.rollback()
         return {"message": "Failed to update activity!"}, 500
+
+    try:
+        if status == "completed" and previous_status != "completed":
+            cursor.execute('SELECT username FROM "user" WHERE id_registration = %s', (current_user_id,))
+            completer = cursor.fetchone()
+            completer_username = completer["username"] if completer else "unknown"
+
+            cursor.execute(
+                """
+                SELECT DISTINCT assigned_user_id FROM (
+                    SELECT au.id_user AS assigned_user_id
+                    FROM activity_user au
+                    WHERE au.id_activity = %s
+                    UNION
+                    SELECT ur.user_id AS assigned_user_id
+                    FROM activity_role ar
+                    JOIN user_role ur ON ar.role_id = ur.role_id
+                    WHERE ar.activity_id = %s
+                ) assigned
+                """,
+                (activity_id, activity_id),
+            )
+            assigned_rows = cursor.fetchall()
+            assigned_user_ids = [row["assigned_user_id"] for row in assigned_rows if row.get("assigned_user_id") is not None]
+
+            if assigned_user_ids:
+                create_activity_completed_notification(
+                    recipient_user_ids=assigned_user_ids,
+                    activity_id=activity_id,
+                    activity_name=activity_name_for_notification,
+                    completed_by_user_id=current_user_id,
+                    completed_by_username=completer_username,
+                )
+    except Exception as exc:
+        # Fallback: if DB notification persistence fails (e.g. missing migration),
+        # still deliver push to assigned users.
+        print(f"Failed to persist completion notification: {exc}")
+        try:
+            if status == "completed" and previous_status != "completed":
+                cursor.execute(
+                    """
+                    SELECT DISTINCT assigned_user_id FROM (
+                        SELECT au.id_user AS assigned_user_id
+                        FROM activity_user au
+                        WHERE au.id_activity = %s
+                        UNION
+                        SELECT ur.user_id AS assigned_user_id
+                        FROM activity_role ar
+                        JOIN user_role ur ON ar.role_id = ur.role_id
+                        WHERE ar.activity_id = %s
+                    ) assigned
+                    """,
+                    (activity_id, activity_id),
+                )
+                fallback_rows = cursor.fetchall()
+                fallback_user_ids = [
+                    row["assigned_user_id"]
+                    for row in fallback_rows
+                    if row.get("assigned_user_id") is not None
+                ]
+                if fallback_user_ids:
+                    cursor.execute(
+                        'SELECT username FROM "user" WHERE id_registration = %s',
+                        (current_user_id,),
+                    )
+                    completer = cursor.fetchone()
+                    completer_username = completer["username"] if completer else "unknown"
+                    send_push_to_users(
+                        fallback_user_ids,
+                        title=f"Activity completed {activity_name_for_notification}",
+                        body=f"Completed by {completer_username}",
+                        data={
+                            "notification_type": "5",
+                            "activity_id": str(activity_id),
+                            "activity_name": activity_name_for_notification,
+                            "completed_by_username": completer_username,
+                        },
+                    )
+        except Exception as fallback_exc:
+            print(f"Fallback completion push failed: {fallback_exc}")
 
     return {"message": "Activity updated successfully"}, 200
 
@@ -597,7 +792,8 @@ def get_my_activities():
         LEFT JOIN activity_user au ON a.id_activity = au.id_activity
         LEFT JOIN activity_role ar ON a.id_activity = ar.activity_id
         LEFT JOIN user_role ur ON ar.role_id = ur.role_id AND ur.user_id = %s
-        WHERE au.id_user = %s OR ur.user_id = %s OR (a.group_id IS NULL AND a.creator_id = %s)
+        WHERE (au.id_user = %s OR ur.user_id = %s OR (a.group_id IS NULL AND a.creator_id = %s))
+          AND (a.deadline IS NULL OR a.deadline > CURRENT_TIMESTAMP)
     """, (current_user_id, current_user_id, current_user_id, current_user_id))
     activities = cursor.fetchall()
 

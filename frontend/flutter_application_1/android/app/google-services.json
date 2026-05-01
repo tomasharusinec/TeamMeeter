@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "3660582981",
+    "project_id": "teammeeter-cccde",
+    "storage_bucket": "teammeeter-cccde.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:3660582981:android:90446a9e39a536091e132c",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFbUqGZMggcZEoUdAUhGho7r4kwbjnchk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

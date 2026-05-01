@@ -10,7 +10,7 @@ import '../models/activity.dart';
 import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.105:5000';
+  static const String baseUrl = 'http://192.168.1.123:5000';
   static const String _activityCacheKey = 'cached_activities_v1';
   static const String _activityOpsKey = 'pending_activity_ops_v1';
   static const String _activityTempIdKey = 'activity_temp_id_seed_v1';
@@ -18,6 +18,12 @@ class ApiService {
   static const String _groupOpsKey = 'pending_group_ops_v1';
   static const String _profileOpsKey = 'pending_profile_ops_v1';
   static const String _chatOpsKey = 'pending_chat_ops_v1';
+  static const String _notificationOpsKey = 'pending_notification_ops_v1';
+  static const String _conversationCacheKey = 'cached_conversations_v1';
+  static const String _conversationMessagesCachePrefix =
+      'cached_conversation_messages_v1_';
+  static const String _notificationCacheKey = 'cached_notifications_v1';
+  static const String _notificationSeenAtKey = 'notifications_seen_at_v1';
   static const String _groupTempIdKey = 'group_temp_id_seed_v1';
   static const String _groupIdMappingKey = 'group_id_mapping_v1';
   static const String _roleTempIdKey = 'role_temp_id_seed_v1';
@@ -26,6 +32,18 @@ class ApiService {
   static const String _groupIconBytesPrefix = 'cached_group_icon_bytes_v1_';
 
   String? _token;
+  String _cacheNamespace = 'global';
+
+  void setCacheNamespace(String? namespace) {
+    final cleaned = namespace?.trim();
+    if (cleaned == null || cleaned.isEmpty) {
+      _cacheNamespace = 'global';
+      return;
+    }
+    _cacheNamespace = cleaned;
+  }
+
+  String _namespacedKey(String baseKey) => '${baseKey}_$_cacheNamespace';
 
   void setToken(String? token) {
     _token = token;
@@ -73,6 +91,18 @@ class ApiService {
     } catch (_) {
       return [];
     }
+  }
+
+  bool _isActivityExpiredByDeadline(Activity activity) {
+    final deadline = activity.parsedDeadline;
+    if (deadline == null) return false;
+    return deadline.isBefore(DateTime.now());
+  }
+
+  List<Activity> _withoutExpiredActivities(List<Activity> activities) {
+    return activities
+        .where((activity) => !_isActivityExpiredByDeadline(activity))
+        .toList();
   }
 
   Future<void> _saveCachedActivities(List<Activity> activities) async {
@@ -181,24 +211,28 @@ class ApiService {
     required List<Group> serverGroups,
     required List<Group> cachedGroups,
   }) {
+    // Start from server data and only preserve groups that are local/pending.
+    // If a regular server group disappears from server response, remove it from
+    // merged output (e.g. group was deleted by another user).
     final merged = <Group>[...serverGroups];
     final indexById = <int, int>{
       for (var i = 0; i < merged.length; i++) merged[i].idGroup: i,
     };
 
-    for (final local in cachedGroups) {
+    for (final cached in cachedGroups) {
       final isPendingLocal =
-          local.idGroup < 0 || local.hasPendingSync || local.isLocalOnly;
-      if (!isPendingLocal) {
-        continue;
-      }
-
-      final existingIndex = indexById[local.idGroup];
+          cached.idGroup < 0 || cached.hasPendingSync || cached.isLocalOnly;
+      final existingIndex = indexById[cached.idGroup];
       if (existingIndex != null) {
-        merged[existingIndex] = local;
-      } else {
-        merged.add(local);
-        indexById[local.idGroup] = merged.length - 1;
+        final serverGroup = merged[existingIndex];
+        if (isPendingLocal) {
+          merged[existingIndex] = cached;
+        } else {
+          merged[existingIndex] = serverGroup;
+        }
+      } else if (isPendingLocal) {
+        merged.add(cached);
+        indexById[cached.idGroup] = merged.length - 1;
       }
     }
 
@@ -312,7 +346,7 @@ class ApiService {
 
   Future<List<Map<String, dynamic>>> _loadPendingChatOps() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_chatOpsKey);
+    final raw = prefs.getString(_namespacedKey(_chatOpsKey));
     if (raw == null || raw.isEmpty) return [];
     try {
       return List<Map<String, dynamic>>.from(jsonDecode(raw));
@@ -323,7 +357,196 @@ class ApiService {
 
   Future<void> _savePendingChatOps(List<Map<String, dynamic>> ops) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_chatOpsKey, jsonEncode(ops));
+    await prefs.setString(_namespacedKey(_chatOpsKey), jsonEncode(ops));
+  }
+
+  Future<List<Map<String, dynamic>>> _loadCachedNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_namespacedKey(_notificationCacheKey));
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return List<Map<String, dynamic>>.from(jsonDecode(raw));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveCachedNotifications(
+    List<Map<String, dynamic>> notifications,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _namespacedKey(_notificationCacheKey),
+      jsonEncode(notifications),
+    );
+  }
+
+  Future<void> _removeCachedNotification(int notificationId) async {
+    final notifications = await _loadCachedNotifications();
+    notifications.removeWhere((n) => n['id_notification'] == notificationId);
+    await _saveCachedNotifications(notifications);
+  }
+
+  Future<void> _updateCachedMembershipNotificationStatus({
+    required int notificationId,
+    required bool accept,
+  }) async {
+    final notifications = await _loadCachedNotifications();
+    final updated = notifications.map((n) {
+      if (n['id_notification'] != notificationId) return n;
+      return {...n, 'membership_status': accept ? 'accepted' : 'rejected'};
+    }).toList();
+    await _saveCachedNotifications(updated);
+  }
+
+  Future<List<Map<String, dynamic>>> _loadPendingNotificationOps() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_namespacedKey(_notificationOpsKey));
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return List<Map<String, dynamic>>.from(jsonDecode(raw));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _savePendingNotificationOps(
+    List<Map<String, dynamic>> ops,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_namespacedKey(_notificationOpsKey), jsonEncode(ops));
+  }
+
+  Future<void> _queueNotificationOperation(Map<String, dynamic> op) async {
+    final ops = await _loadPendingNotificationOps();
+    ops.add(op);
+    await _savePendingNotificationOps(ops);
+  }
+
+  Future<DateTime?> _getNotificationsSeenAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_namespacedKey(_notificationSeenAtKey));
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  Future<void> markNotificationsSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _namespacedKey(_notificationSeenAtKey),
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  Future<bool> hasUnreadNotifications() async {
+    final notifications = await getNotifications();
+    if (notifications.isEmpty) return false;
+    final seenAt = await _getNotificationsSeenAt();
+    if (seenAt == null) return true;
+    for (final notification in notifications) {
+      final createdAtRaw = notification['created_at']?.toString();
+      final createdAt = createdAtRaw == null
+          ? null
+          : DateTime.tryParse(createdAtRaw);
+      if (createdAt != null && createdAt.isAfter(seenAt)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadCachedConversations() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_namespacedKey(_conversationCacheKey));
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return List<Map<String, dynamic>>.from(jsonDecode(raw));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveCachedConversations(
+    List<Map<String, dynamic>> conversations,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _namespacedKey(_conversationCacheKey),
+      jsonEncode(conversations),
+    );
+  }
+
+  Future<void> _removeCachedConversation(int conversationId) async {
+    final conversations = await _loadCachedConversations();
+    conversations.removeWhere((c) => c['id'] == conversationId);
+    await _saveCachedConversations(conversations);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(
+      _namespacedKey('$_conversationMessagesCachePrefix$conversationId'),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadCachedConversationMessages(
+    int conversationId,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(
+      _namespacedKey('$_conversationMessagesCachePrefix$conversationId'),
+    );
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return List<Map<String, dynamic>>.from(jsonDecode(raw));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveConversationMessagesToCache(
+    int conversationId,
+    List<Map<String, dynamic>> messages,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _namespacedKey('$_conversationMessagesCachePrefix$conversationId'),
+      jsonEncode(messages),
+    );
+  }
+
+  List<Map<String, dynamic>> _lastMessages(
+    List<Map<String, dynamic>> messages, {
+    int limit = 7,
+  }) {
+    if (messages.length <= limit) return messages;
+    return messages.sublist(messages.length - limit);
+  }
+
+  Future<void> _prefetchLastMessagesForConversations(
+    List<Map<String, dynamic>> conversations,
+  ) async {
+    for (final conversation in conversations) {
+      final idRaw = conversation['id'];
+      if (idRaw is! num) continue;
+      final conversationId = idRaw.toInt();
+      try {
+        final response = await http
+            .get(
+              Uri.parse('$baseUrl/conversations/$conversationId/messages'),
+              headers: _headers,
+            )
+            .timeout(const Duration(seconds: 8));
+        if (response.statusCode != 200) continue;
+        final data = jsonDecode(response.body);
+        final messages = List<Map<String, dynamic>>.from(
+          data['messages'] ?? const [],
+        );
+        await saveConversationMessagesToCache(
+          conversationId,
+          _lastMessages(messages),
+        );
+      } catch (_) {
+        // Keep existing cached messages if prefetch fails.
+      }
+    }
   }
 
   Future<void> queueOfflineConversationMessage({
@@ -365,9 +588,13 @@ class ApiService {
   Future<bool> syncPendingChatOperations() async {
     final pending = await _loadPendingChatOps();
     if (pending.isEmpty || _token == null || _token!.isEmpty) return false;
+    final reachable = await isServerReachable();
+    if (!reachable) return false;
 
     final wsUrl = Uri.parse(
-      baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://'),
+      baseUrl
+          .replaceFirst('http://', 'ws://')
+          .replaceFirst('https://', 'wss://'),
     ).replace(path: '/websocket');
 
     WebSocket? socket;
@@ -375,9 +602,9 @@ class ApiService {
     Completer<void>? awaitingFileCompleter;
     var syncedAny = false;
     try {
-      socket = await WebSocket.connect(wsUrl.toString()).timeout(
-        const Duration(seconds: 6),
-      );
+      socket = await WebSocket.connect(
+        wsUrl.toString(),
+      ).timeout(const Duration(seconds: 6));
       socket.add(jsonEncode({'type': 'auth', 'token': _token}));
 
       subscription = socket.listen((raw) {
@@ -716,7 +943,7 @@ class ApiService {
 
   Future<List<Group>> getGroups() async {
     await _applyPersistedGroupMappingToCache();
-    await syncPendingActivityOperations();
+    unawaited(syncPendingActivityOperations());
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/groups/'), headers: _headers)
@@ -1200,29 +1427,53 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getConversations() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/conversations/'),
-      headers: _headers,
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['conversations'] ?? const []);
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/conversations/'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final conversations = List<Map<String, dynamic>>.from(
+          data['conversations'] ?? const [],
+        );
+        await _saveCachedConversations(conversations);
+        unawaited(_prefetchLastMessagesForConversations(conversations));
+        return conversations;
+      }
+      throw _buildApiException(response, 'Nepodarilo sa načítať konverzácie');
+    } catch (e) {
+      if (!_isConnectivityError(e)) rethrow;
+      return _loadCachedConversations();
     }
-    throw _buildApiException(response, 'Nepodarilo sa načítať konverzácie');
   }
 
   Future<List<Map<String, dynamic>>> getConversationMessages(
     int conversationId,
   ) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/conversations/$conversationId/messages'),
-      headers: _headers,
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['messages'] ?? const []);
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/conversations/$conversationId/messages'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final messages = List<Map<String, dynamic>>.from(
+          data['messages'] ?? const [],
+        );
+        await saveConversationMessagesToCache(
+          conversationId,
+          _lastMessages(messages),
+        );
+        return messages;
+      }
+      throw _buildApiException(response, 'Nepodarilo sa načítať správy');
+    } catch (e) {
+      if (!_isConnectivityError(e)) rethrow;
+      final cached = await _loadCachedConversationMessages(conversationId);
+      return _lastMessages(cached);
     }
-    throw _buildApiException(response, 'Nepodarilo sa načítať správy');
   }
 
   Future<int> createConversation({
@@ -1272,6 +1523,17 @@ class ApiService {
     }
   }
 
+  Future<void> deleteConversation(int conversationId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/conversations/$conversationId'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa zmazať konverzáciu');
+    }
+    await _removeCachedConversation(conversationId);
+  }
+
   Future<void> deleteConversationMessage({
     required int conversationId,
     required int messageId,
@@ -1296,7 +1558,9 @@ class ApiService {
       final marker = 'filename=';
       final idx = disposition.indexOf(marker);
       if (idx != -1) {
-        filename = disposition.substring(idx + marker.length).replaceAll('"', '');
+        filename = disposition
+            .substring(idx + marker.length)
+            .replaceAll('"', '');
       }
       return {'bytes': response.bodyBytes, 'filename': filename};
     }
@@ -1330,12 +1594,23 @@ class ApiService {
       if (response.statusCode != 200) {
         throw _buildApiException(response, 'Nepodarilo sa zmazať skupinu');
       }
+      final groups = await _loadCachedGroups();
+      groups.removeWhere((g) => g.idGroup == groupId);
+      await _saveCachedGroups(groups);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('$_groupMembersCachePrefix$groupId');
+      await prefs.remove('$_groupRolesCachePrefix$groupId');
+      await prefs.remove('$_groupIconBytesPrefix$groupId');
     } catch (e) {
       if (!_isConnectivityError(e)) rethrow;
       await _queueGroupOperation({'type': 'delete_group', 'group_id': groupId});
       final groups = await _loadCachedGroups();
       groups.removeWhere((g) => g.idGroup == groupId);
       await _saveCachedGroups(groups);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('$_groupMembersCachePrefix$groupId');
+      await prefs.remove('$_groupRolesCachePrefix$groupId');
+      await prefs.remove('$_groupIconBytesPrefix$groupId');
     }
   }
 
@@ -1451,7 +1726,7 @@ class ApiService {
   }
 
   Future<List<Activity>> getMyActivities() async {
-    await syncPendingActivityOperations();
+    unawaited(syncPendingActivityOperations());
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/activities/me'), headers: _headers)
@@ -1461,13 +1736,19 @@ class ApiService {
         final activities = (data['activities'] as List)
             .map((a) => Activity.fromJson(a))
             .toList();
-        await _saveCachedActivities(activities);
-        return activities;
+        final filtered = _withoutExpiredActivities(activities);
+        await _saveCachedActivities(filtered);
+        return filtered;
       }
       throw _buildApiException(response, 'Nepodarilo sa načítať aktivity');
     } catch (e) {
       if (!_isConnectivityError(e)) rethrow;
-      return _loadCachedActivities();
+      final cached = await _loadCachedActivities();
+      final filtered = _withoutExpiredActivities(cached);
+      if (filtered.length != cached.length) {
+        await _saveCachedActivities(filtered);
+      }
+      return filtered;
     }
   }
 
@@ -1556,7 +1837,10 @@ class ApiService {
   }
 
   Future<bool> syncPendingActivityOperations() async {
+    final reachable = await isServerReachable();
+    if (!reachable) return false;
     await syncPendingChatOperations();
+    await _syncPendingNotificationOperations();
     await _syncPendingProfileOperations();
     await _syncPendingGroupOperations();
     final pendingOps = await _loadPendingActivityOps();
@@ -2162,6 +2446,64 @@ class ApiService {
     }
   }
 
+  Future<void> _syncPendingNotificationOperations() async {
+    final ops = await _loadPendingNotificationOps();
+    if (ops.isEmpty) return;
+    final remaining = <Map<String, dynamic>>[];
+    for (final op in ops) {
+      try {
+        final type = op['type']?.toString();
+        if (type == 'delete_notification') {
+          final notificationId = op['notification_id'] as int?;
+          if (notificationId == null) continue;
+          final response = await http
+              .delete(
+                Uri.parse('$baseUrl/notifications/$notificationId'),
+                headers: _headers,
+              )
+              .timeout(const Duration(seconds: 8));
+          if (response.statusCode == 200 || response.statusCode == 404) {
+            continue;
+          }
+          remaining.add(op);
+          continue;
+        }
+        if (type == 'respond_membership_notification') {
+          final notificationId = op['notification_id'] as int?;
+          final decision = op['decision']?.toString();
+          if (notificationId == null ||
+              decision == null ||
+              (decision != 'accept' && decision != 'reject')) {
+            continue;
+          }
+          final response = await http
+              .post(
+                Uri.parse('$baseUrl/notifications/$notificationId/respond'),
+                headers: _headers,
+                body: jsonEncode({'decision': decision}),
+              )
+              .timeout(const Duration(seconds: 8));
+          if (response.statusCode == 200 || response.statusCode == 404) {
+            continue;
+          }
+          remaining.add(op);
+          continue;
+        }
+        remaining.add(op);
+      } catch (e) {
+        if (_isConnectivityError(e)) {
+          remaining.add(op);
+          remaining.addAll(
+            ops.skipWhile((existing) => !identical(existing, op)).skip(1),
+          );
+          break;
+        }
+        remaining.add(op);
+      }
+    }
+    await _savePendingNotificationOps(remaining);
+  }
+
   Future<int> getPendingActivityOperationsCount() async {
     final ops = await _loadPendingActivityOps();
     return ops.length;
@@ -2172,7 +2514,12 @@ class ApiService {
     final groupOps = await _loadPendingGroupOps();
     final profileOps = await _loadPendingProfileOps();
     final chatOps = await _loadPendingChatOps();
-    return activityOps.length + groupOps.length + profileOps.length + chatOps.length;
+    final notificationOps = await _loadPendingNotificationOps();
+    return activityOps.length +
+        groupOps.length +
+        profileOps.length +
+        chatOps.length +
+        notificationOps.length;
   }
 
   Future<Map<String, dynamic>> createGroup(
@@ -2311,24 +2658,44 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getNotifications() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/notifications'),
-      headers: _headers,
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['notifications']);
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/notifications'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final notifications = List<Map<String, dynamic>>.from(
+          data['notifications'],
+        );
+        await _saveCachedNotifications(notifications);
+        return notifications;
+      }
+      return _loadCachedNotifications();
+    } catch (e) {
+      if (!_isConnectivityError(e)) rethrow;
+      return _loadCachedNotifications();
     }
-    return [];
   }
 
   Future<void> deleteNotification(int notificationId) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/notifications/$notificationId'),
-      headers: _headers,
-    );
-    if (response.statusCode != 200) {
-      throw _buildApiException(response, 'Nepodarilo sa zmazať notifikáciu');
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/notifications/$notificationId'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        throw _buildApiException(response, 'Nepodarilo sa zmazať notifikáciu');
+      }
+      await _removeCachedNotification(notificationId);
+    } catch (e) {
+      if (!_isConnectivityError(e)) rethrow;
+      await _queueNotificationOperation({
+        'type': 'delete_notification',
+        'notification_id': notificationId,
+      });
+      await _removeCachedNotification(notificationId);
     }
   }
 
@@ -2336,16 +2703,71 @@ class ApiService {
     required int notificationId,
     required bool accept,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/notifications/$notificationId/respond'),
-      headers: _headers,
-      body: jsonEncode({'decision': accept ? 'accept' : 'reject'}),
-    );
+    final decision = accept ? 'accept' : 'reject';
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/notifications/$notificationId/respond'),
+            headers: _headers,
+            body: jsonEncode({'decision': decision}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        throw _buildApiException(
+          response,
+          'Nepodarilo sa spracovať požiadavku notifikácie',
+        );
+      }
+      await _updateCachedMembershipNotificationStatus(
+        notificationId: notificationId,
+        accept: accept,
+      );
+    } catch (e) {
+      if (!_isConnectivityError(e)) rethrow;
+      await _queueNotificationOperation({
+        'type': 'respond_membership_notification',
+        'notification_id': notificationId,
+        'decision': decision,
+      });
+      await _updateCachedMembershipNotificationStatus(
+        notificationId: notificationId,
+        accept: accept,
+      );
+    }
+  }
+
+  Future<void> registerPushToken({
+    required String token,
+    String platform = 'flutter',
+  }) async {
+    if (token.trim().isEmpty) return;
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/notifications/push-token'),
+          headers: _headers,
+          body: jsonEncode({'token': token.trim(), 'platform': platform}),
+        )
+        .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {
       throw _buildApiException(
         response,
-        'Nepodarilo sa spracovať požiadavku notifikácie',
+        'Nepodarilo sa zaregistrovat push token',
       );
+    }
+  }
+
+  Future<void> unregisterPushToken({String? token}) async {
+    final response = await http
+        .delete(
+          Uri.parse('$baseUrl/notifications/push-token'),
+          headers: _headers,
+          body: token == null || token.trim().isEmpty
+              ? null
+              : jsonEncode({'token': token.trim()}),
+        )
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) {
+      throw _buildApiException(response, 'Nepodarilo sa odhlasit push token');
     }
   }
 }

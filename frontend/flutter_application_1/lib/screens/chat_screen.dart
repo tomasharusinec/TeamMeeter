@@ -166,8 +166,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     if (mounted) setState(() => _isLoading = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      final conversations = await api.getConversations();
-      final groups = await api.getGroups();
+      final results = await Future.wait([
+        api.getConversations(),
+        api.getGroups(),
+      ]);
+      final conversations = results[0] as List<Map<String, dynamic>>;
+      final groups = results[1] as List<dynamic>;
       final groupConversationIds = groups
           .map((group) => group.conversationId)
           .whereType<int>()
@@ -191,27 +195,82 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     }
   }
 
+  Future<void> _showConversationActions(Map<String, dynamic> conversation) async {
+    final conversationId = conversation['id'] as int?;
+    if (conversationId == null) return;
+    final selectedAction = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF1A0A0A),
+      builder: (_) => SafeArea(
+        child: ListTile(
+          leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+          title: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          onTap: () => Navigator.of(context).pop('delete'),
+        ),
+      ),
+    );
+    if (selectedAction != 'delete') return;
+
+    try {
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      await api.deleteConversation(conversationId);
+      if (!mounted) return;
+      setState(() {
+        _conversations.removeWhere((c) => c['id'] == conversationId);
+      });
+      context.showLatestSnackBar(
+        const SnackBar(
+          content: Text('Konverzácia bola zmazaná'),
+          backgroundColor: Color(0xFF8B1A2C),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      context.showLatestSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: const Color(0xFF8B1A2C),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: Colors.white));
     }
     if (_conversations.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _loadConversations,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: const [
-            SizedBox(height: 140),
-            Icon(Icons.chat_bubble_outline, color: Colors.white54, size: 58),
-            SizedBox(height: 16),
-            Text(
-              'Zatiaľ nemáš žiadne konverzácie',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white60),
+      return Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: _loadConversations,
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: const [
+                SizedBox(height: 140),
+                Icon(Icons.chat_bubble_outline, color: Colors.white54, size: 58),
+                SizedBox(height: 16),
+                Text(
+                  'Zatiaľ nemáš žiadne konverzácie',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white60),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Positioned(
+            right: 16,
+            bottom: 14,
+            child: FloatingActionButton.extended(
+              backgroundColor: const Color(0xFF8B1A2C),
+              foregroundColor: Colors.white,
+              onPressed: _showCreateConversationDialog,
+              icon: const Icon(Icons.add_comment_outlined),
+              label: const Text('Nový chat'),
+            ),
+          ),
+        ],
       );
     }
 
@@ -251,6 +310,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                   trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                  onLongPress: () => _showConversationActions(conversation),
                   onTap: conversationId == null
                       ? null
                       : () async {
@@ -305,10 +365,12 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   WebSocket? _socket;
+  Timer? _connectionMaintenanceTimer;
   bool _isSocketConnected = false;
   bool _isLoading = true;
   bool _isSending = false;
   bool _isUploadingFile = false;
+  bool _isSyncingPendingChatOps = false;
   Completer<void>? _awaitingFileCompleter;
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _participants = [];
@@ -318,10 +380,12 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _initializeChat();
+    _startConnectionMaintenance();
   }
 
   @override
   void dispose() {
+    _connectionMaintenanceTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _socket?.close();
@@ -343,7 +407,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final messages = await api.getConversationMessages(widget.conversationId);
       if (!mounted) return;
-      setState(() => _messages = _mergeServerMessagesWithLocalPending(messages));
+      final merged = _mergeServerMessagesWithLocalPending(messages);
+      setState(() => _messages = merged);
+      await api.saveConversationMessagesToCache(widget.conversationId, merged);
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -372,6 +438,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _connectSocket() async {
+    if (_isSocketConnected) return;
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final token = auth.token;
@@ -419,6 +486,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 _messages.add(data);
               }
             });
+            final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+            api.saveConversationMessagesToCache(widget.conversationId, _messages);
             _scrollToBottom();
           }
         },
@@ -435,6 +504,35 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() => _isSocketConnected = false);
     }
+  }
+
+  void _startConnectionMaintenance() {
+    _connectionMaintenanceTimer?.cancel();
+    _connectionMaintenanceTimer = Timer.periodic(const Duration(seconds: 4), (
+      _,
+    ) async {
+      if (!mounted) return;
+      try {
+        final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+        final isReachable = await api.isServerReachable();
+        if (!isReachable) return;
+
+        if (!_isSocketConnected) {
+          await _connectSocket();
+        }
+
+        if (_isSyncingPendingChatOps) return;
+        _isSyncingPendingChatOps = true;
+        final syncedAny = await api.syncPendingChatOperations();
+        if (syncedAny && mounted) {
+          await _loadMessages();
+        }
+      } catch (_) {
+        // Keep trying on next tick without breaking chat UI.
+      } finally {
+        _isSyncingPendingChatOps = false;
+      }
+    });
   }
 
   Future<void> _addParticipantDialog() async {
@@ -697,6 +795,8 @@ class _ChatScreenState extends State<ChatScreen> {
       'is_local_pending': true,
     };
     setState(() => _messages.add(localMessage));
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+    api.saveConversationMessagesToCache(widget.conversationId, _messages);
     _scrollToBottom();
   }
 
@@ -721,6 +821,8 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     };
     setState(() => _messages.add(localMessage));
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+    api.saveConversationMessagesToCache(widget.conversationId, _messages);
     _scrollToBottom();
   }
 
@@ -767,6 +869,102 @@ class _ChatScreenState extends State<ChatScreen> {
     final aFileExt = (aFileMap['extension'] ?? '').toString().trim();
     final bFileExt = (bFileMap['extension'] ?? '').toString().trim();
     return aFileName == bFileName && aFileExt == bFileExt;
+  }
+
+  bool _isImageExtension(String extension) {
+    final normalized = extension.trim().toLowerCase();
+    return normalized == 'png' ||
+        normalized == 'jpg' ||
+        normalized == 'jpeg' ||
+        normalized == 'webp' ||
+        normalized == 'gif';
+  }
+
+  IconData _fileTypeIcon(String extension) {
+    final ext = extension.trim().toLowerCase();
+    if (ext == 'pdf') return Icons.picture_as_pdf_outlined;
+    if (ext == 'doc' || ext == 'docx' || ext == 'txt' || ext == 'rtf') {
+      return Icons.description_outlined;
+    }
+    if (ext == 'xls' || ext == 'xlsx' || ext == 'csv') {
+      return Icons.table_chart_outlined;
+    }
+    if (ext == 'zip' || ext == 'rar' || ext == '7z' || ext == 'tar') {
+      return Icons.archive_outlined;
+    }
+    if (ext == 'mp4' || ext == 'mov' || ext == 'mkv' || ext == 'avi') {
+      return Icons.movie_outlined;
+    }
+    if (ext == 'mp3' || ext == 'wav' || ext == 'ogg' || ext == 'flac') {
+      return Icons.audiotrack_outlined;
+    }
+    return Icons.insert_drive_file_outlined;
+  }
+
+  Future<void> _openImagePreview({
+    required String imageUrl,
+    required String? token,
+    required String title,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(220),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  imageUrl,
+                  headers: token == null
+                      ? null
+                      : {'Authorization': 'Bearer $token'},
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A0A0A),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Nepodarilo sa načítať obrázok',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 12,
+              right: 44,
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _downloadAttachment(Map<String, dynamic> file) async {
@@ -843,6 +1041,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final messageId = message['id'];
     if (messageId == null || (messageId is num && messageId.toInt() <= 0)) {
       setState(() => _messages.remove(message));
+      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+      api.saveConversationMessagesToCache(widget.conversationId, _messages);
       return;
     }
     try {
@@ -856,6 +1056,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.removeWhere((m) => m['id'] == messageId);
         if (_replyingTo?['id'] == messageId) _replyingTo = null;
       });
+      await api.saveConversationMessagesToCache(widget.conversationId, _messages);
     } catch (e) {
       if (!mounted) return;
       context.showLatestSnackBar(
@@ -880,11 +1081,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = Provider.of<AuthProvider>(context).user?.idRegistration;
+    final authProvider = Provider.of<AuthProvider>(context);
+    final currentUserId = authProvider.user?.idRegistration;
+    final token = authProvider.token;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final appBarBg = isDarkMode ? const Color(0xFF1A0A0A) : const Color(0xFFF2ECEC);
+    final screenBg = isDarkMode ? const Color(0xFF0D0D0D) : const Color(0xFFF6F3F3);
+    final myBubbleBg = isDarkMode ? const Color(0xFF8B1A2C) : const Color(0xFFD66A7A);
+    final otherBubbleBg = isDarkMode ? const Color(0xFF2A1111) : Colors.white;
+    final primaryTextColor = isDarkMode ? Colors.white : const Color(0xFF1A1A1A);
+    final secondaryTextColor = isDarkMode
+        ? Colors.white70
+        : const Color(0xFF666666);
+    final inputBg = isDarkMode ? const Color(0xFF2A1111) : Colors.white;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
-        backgroundColor: const Color(0xFF1A0A0A),
+        backgroundColor: appBarBg,
         actions: [
           IconButton(
             onPressed: _addParticipantDialog,
@@ -948,19 +1161,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF8B1A2C),
-              Color(0xFF3D0C0C),
-              Color(0xFF1A0A0A),
-              Color(0xFF0D0D0D),
-            ],
-            stops: [0.0, 0.2, 0.55, 1.0],
-          ),
-        ),
+        color: screenBg,
         child: Column(
           children: [
             Expanded(
@@ -992,8 +1193,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             constraints: const BoxConstraints(maxWidth: 290),
                             decoration: BoxDecoration(
                               color: isMine
-                                  ? const Color(0xFF8B1A2C)
-                                  : const Color(0xFF2A1111),
+                                  ? myBubbleBg
+                                  : otherBubbleBg,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: Colors.white.withAlpha(18),
@@ -1010,23 +1211,23 @@ class _ChatScreenState extends State<ChatScreen> {
                                     padding: const EdgeInsets.only(bottom: 4),
                                     child: Text(
                                       message['sender_username'].toString(),
-                                      style: const TextStyle(
-                                        color: Colors.white70,
+                                      style: TextStyle(
+                                        color: secondaryTextColor,
                                         fontSize: 11,
                                       ),
                                     ),
                                   ),
                                 Text(
                                   message['text']?.toString() ?? '',
-                                  style: const TextStyle(color: Colors.white),
+                                  style: TextStyle(color: primaryTextColor),
                                 ),
                                 if (message['is_local_pending'] == true)
-                                  const Padding(
+                                  Padding(
                                     padding: EdgeInsets.only(top: 5),
                                     child: Text(
                                       'Čaká na odoslanie...',
                                       style: TextStyle(
-                                        color: Colors.white70,
+                                        color: secondaryTextColor,
                                         fontSize: 11,
                                         fontStyle: FontStyle.italic,
                                       ),
@@ -1035,34 +1236,155 @@ class _ChatScreenState extends State<ChatScreen> {
                                 if (message['file'] != null)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 6),
-                                    child: InkWell(
-                                      onTap: () {
+                                    child: Builder(
+                                      builder: (_) {
                                         final fileMap = Map<String, dynamic>.from(
                                           message['file'],
                                         );
                                         final fileId = fileMap['id'];
-                                        if (fileId is num && fileId.toInt() > 0) {
-                                          _downloadAttachment(fileMap);
-                                        }
-                                      },
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(
-                                            Icons.download_rounded,
-                                            size: 14,
-                                            color: Colors.white70,
-                                          ),
-                                          Text(
-                                            '${message['file']['name']}.${message['file']['extension']}',
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                              decoration: TextDecoration.underline,
+                                        final fileName =
+                                            fileMap['name']?.toString() ?? 'file';
+                                        final fileExtension =
+                                            fileMap['extension']?.toString() ?? '';
+                                        final fullName = fileExtension.isEmpty
+                                            ? fileName
+                                            : '$fileName.$fileExtension';
+                                        final downloadable =
+                                            fileId is num && fileId.toInt() > 0;
+                                        final isImage = _isImageExtension(
+                                          fileExtension,
+                                        );
+                                        final imageUrl = downloadable
+                                            ? '${ApiService.baseUrl}/conversations/files/${fileId.toInt()}'
+                                            : null;
+
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            if (isImage &&
+                                                imageUrl != null &&
+                                                token != null)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 6,
+                                                ),
+                                                child: InkWell(
+                                                  onTap: () => _openImagePreview(
+                                                    imageUrl: imageUrl,
+                                                    token: token,
+                                                    title: fullName,
+                                                  ),
+                                                  child: ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(8),
+                                                    child: ConstrainedBox(
+                                                      constraints:
+                                                          const BoxConstraints(
+                                                            maxWidth: 220,
+                                                            maxHeight: 180,
+                                                          ),
+                                                      child: Image.network(
+                                                        imageUrl,
+                                                        headers: {
+                                                          'Authorization':
+                                                              'Bearer $token',
+                                                        },
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder:
+                                                            (_, __, ___) =>
+                                                                const SizedBox.shrink(),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            if (!isImage)
+                                              Container(
+                                                margin: const EdgeInsets.only(
+                                                  bottom: 6,
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 8,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black.withAlpha(
+                                                    28,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: Colors.white.withAlpha(
+                                                      20,
+                                                    ),
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      _fileTypeIcon(
+                                                        fileExtension,
+                                                      ),
+                                                      size: 18,
+                                                      color: Colors.white70,
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      fileExtension
+                                                              .trim()
+                                                              .isEmpty
+                                                          ? 'FILE'
+                                                          : fileExtension
+                                                                .toUpperCase(),
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            InkWell(
+                                              onTap: downloadable
+                                                  ? () => _downloadAttachment(
+                                                      fileMap,
+                                                    )
+                                                  : null,
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.download_rounded,
+                                                    size: 14,
+                                                    color: Colors.white70,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Expanded(
+                                                    child: Text(
+                                                      fullName,
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 12,
+                                                        decoration:
+                                                            TextDecoration
+                                                                .underline,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
+                                          ],
+                                        );
+                                      },
                                     ),
                                   ),
                               ],
@@ -1131,19 +1453,19 @@ class _ChatScreenState extends State<ChatScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(Icons.attach_file, color: Colors.white70),
+                              : Icon(Icons.attach_file, color: secondaryTextColor),
                         ),
                         Expanded(
                           child: TextField(
                             controller: _messageController,
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: primaryTextColor),
                             minLines: 1,
                             maxLines: 4,
                             decoration: InputDecoration(
                               hintText: 'Napíš správu...',
-                              hintStyle: const TextStyle(color: Colors.white54),
+                              hintStyle: TextStyle(color: secondaryTextColor),
                               filled: true,
-                              fillColor: const Color(0xFF2A1111),
+                              fillColor: inputBg,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide(
