@@ -1,33 +1,41 @@
 {
   "project_info": {
-    "project_number": "247203523159",
-    "project_id": "teammeeter-b3d4d",
-    "storage_bucket": "teammeeter-b3d4d.firebasestorage.app"
+    "project_number": "3660582981",
+    "project_id": "teammeeter-cccde",
+    "storage_bucket": "teammeeter-cccde.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:247203523159:android:bae3fc5aa62979392f5112",
+        "mobilesdk_app_id": "1:3660582981:android:90446a9e39a536091e132c",
         "android_client_info": {
           "package_name": "com.example.flutter_application_1"
         }
       },
       "oauth_client": [
         {
-          "client_id": "247203523159-lvkktkvg6lsipc7mjb64knihkbv3tf18.apps.googleusercontent.com",
+          "client_id": "3660582981-2iov54p9kqf44vfaun55t3dmc166un74.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.flutter_application_1",
+            "certificate_hash": "3a38e521a3aa921d5ca73dc63b30dab85a69c969"
+          }
+        },
+        {
+          "client_id": "3660582981-q4sqrvn2sl3fv3i89nv8tc2j28ugm5ho.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDfbebYDk1kyCWDmcvgjrq8RtCOz3Ypq5k"
+          "current_key": "AIzaSyBFbUqGZMggcZEoUdAUhGho7r4kwbjnchk"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "247203523159-lvkktkvg6lsipc7mjb64knihkbv3tf18.apps.googleusercontent.com",
+              "client_id": "3660582981-q4sqrvn2sl3fv3i89nv8tc2j28ugm5ho.apps.googleusercontent.com",
               "client_type": 3
             }
           ]

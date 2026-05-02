@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
+import '../services/teammeeter_analytics.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -111,6 +112,10 @@ class AuthProvider with ChangeNotifier {
         }
       }
     }
+    if (_user != null) {
+      final id = _user!.idRegistration.toString();
+      await TeamMeeterAnalytics.instance.setUserId(id);
+    }
     _isInitializing = false;
     notifyListeners();
   }
@@ -135,6 +140,10 @@ class AuthProvider with ChangeNotifier {
         );
         await _saveCachedUser(_user!);
       }
+      await TeamMeeterAnalytics.instance.setUserId(
+        _user?.idRegistration.toString(),
+      );
+      await TeamMeeterAnalytics.instance.logLogin(method: 'email');
     } catch (e) {
       rethrow;
     } finally {
@@ -183,6 +192,10 @@ class AuthProvider with ChangeNotifier {
         );
         await _saveCachedUser(_user!);
       }
+      await TeamMeeterAnalytics.instance.setUserId(
+        _user?.idRegistration.toString(),
+      );
+      await TeamMeeterAnalytics.instance.logSignUp(method: 'email');
     } catch (e) {
       rethrow;
     } finally {
@@ -208,6 +221,10 @@ class AuthProvider with ChangeNotifier {
         _apiService.setCacheNamespace(_user!.idRegistration.toString());
         await _saveCachedUser(_user!);
       }
+      await TeamMeeterAnalytics.instance.setUserId(
+        _user?.idRegistration.toString(),
+      );
+      await TeamMeeterAnalytics.instance.logLogin(method: 'google');
     } catch (e) {
       rethrow;
     } finally {
@@ -229,6 +246,9 @@ class AuthProvider with ChangeNotifier {
     await prefs.remove(_localProfilePhotoRemovedKey);
     _localProfilePhotoPath = null;
     _localProfilePhotoRemoved = false;
+
+    await TeamMeeterAnalytics.instance.clearUser();
+    await TeamMeeterAnalytics.instance.logLogout();
 
     notifyListeners();
   }

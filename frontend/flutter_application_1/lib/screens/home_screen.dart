@@ -11,6 +11,7 @@ import '../services/permission_service.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/push_notification_service.dart';
+import '../services/teammeeter_analytics.dart';
 import '../utils/snackbar_utils.dart';
 import '../models/activity.dart';
 import '../models/group.dart';
@@ -30,6 +31,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentNavIndex = 1; // Home is center/default
+  final GlobalKey<ConversationsScreenState> _conversationsScreenKey =
+      GlobalKey<ConversationsScreenState>();
   List<Activity> _activities = [];
   List<Group> _groups = [];
   bool _isLoading = true;
@@ -124,6 +127,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final activityId = int.tryParse(activityIdRaw ?? '');
 
     if (conversationId != null && conversationId > 0) {
+      unawaited(
+        TeamMeeterAnalytics.instance.logPushNotificationOpen(
+          notificationType: 'chat',
+          conversationId: conversationId,
+        ),
+      );
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       String title = 'Conversation #$conversationId';
       final titleFromPush = data['conversation_name']?.toString().trim();
@@ -146,11 +155,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
       if (!mounted) return;
+      unawaited(
+        _conversationsScreenKey.currentState?.reloadConversations() ??
+            Future.value(),
+      );
       await _refreshNotificationIndicator();
       return;
     }
 
     if (type == 1) {
+      unawaited(
+        TeamMeeterAnalytics.instance.logPushNotificationOpen(
+          notificationType: 'message_generic',
+        ),
+      );
       // For message notifications, fallback to notifications list when payload
       // misses conversation id (older push payloads).
       await Navigator.of(
@@ -162,6 +180,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     if ((type == 2 || type == 5) && activityId != null && activityId > 0) {
+      unawaited(
+        TeamMeeterAnalytics.instance.logPushNotificationOpen(
+          notificationType: type == 2 ? 'activity_new' : 'activity_completed',
+          activityId: activityId,
+        ),
+      );
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       try {
         final activity = await api.getActivityDetails(activityId);
@@ -179,6 +203,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
 
+    unawaited(
+      TeamMeeterAnalytics.instance.logPushNotificationOpen(
+        notificationType: 'notifications_fallback',
+      ),
+    );
     await Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
@@ -188,13 +217,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    await Future.wait([
-      _loadActivities(showError: false),
-      _loadGroups(showError: false, preservePreviousOnEmpty: true),
-      _refreshNotificationIndicator(),
-    ]);
-    await _refreshOfflineBannerState();
-    if (mounted) setState(() => _isLoading = false);
+    try {
+      await Future.wait([
+        _loadActivities(showError: false),
+        _loadGroups(showError: false, preservePreviousOnEmpty: true),
+        _refreshNotificationIndicator(),
+      ]);
+      await _refreshOfflineBannerState();
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _refreshNotificationIndicator() async {
@@ -269,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _loadGroups({
     bool showError = true,
     bool silent = false,
-    bool preservePreviousOnEmpty = false,
+    bool preservePreviousOnEmpty = true,
   }) async {
     final requestId = ++_groupsLoadRequestId;
     if (!silent && mounted) setState(() => _isGroupsLoading = true);
@@ -278,7 +310,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final api = authProvider.apiService;
       final groups = await api.getGroups();
-      if (!mounted || requestId != _groupsLoadRequestId) return;
+      if (!mounted) return;
+      if (requestId != _groupsLoadRequestId) {
+        // Novší _loadGroups už dobehol skôr; ak zobrazil prázdny zoznam a my máme dáta, oprav to.
+        if (groups.isNotEmpty && _groups.isEmpty) {
+          setState(() => _groups = groups);
+          await _refreshOfflineBannerState();
+        }
+        return;
+      }
       if (preservePreviousOnEmpty && groups.isEmpty && _groups.isNotEmpty) {
         return;
       }
@@ -796,11 +836,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildChatView() {
-    return const ConversationsScreen();
+    return ConversationsScreen(key: _conversationsScreenKey);
   }
 
   Widget _buildGroupsView() {
-    if (_isLoading || _isGroupsLoading) {
+    final showBlockingLoader =
+        (_isLoading || _isGroupsLoading) && _groups.isEmpty;
+
+    if (showBlockingLoader) {
       return const Center(
         child: CircularProgressIndicator(color: Colors.white),
       );
@@ -808,8 +851,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     return Stack(
       children: [
+        if (_isGroupsLoading)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: LinearProgressIndicator(
+              minHeight: 3,
+              color: Color(0xFF8B1A2C),
+              backgroundColor: Colors.white24,
+            ),
+          ),
         RefreshIndicator(
-          onRefresh: _loadGroups,
+          onRefresh: () => _loadGroups(
+            showError: false,
+            preservePreviousOnEmpty: false,
+          ),
           color: const Color(0xFF8B1A2C),
           child: _groups.isEmpty
               ? ListView(
@@ -986,6 +1043,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               imageUrl,
               fit: BoxFit.cover,
               headers: {'Authorization': 'Bearer $token'},
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return Center(
+                  child: Text(
+                    fallbackLetter,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              },
               errorBuilder: (_, __, ___) => Center(
                 child: Text(
                   fallbackLetter,
@@ -1105,10 +1175,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            Text(
-              authProvider.user?.email ?? '',
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
-            ),
+            if (authProvider.user != null &&
+                authProvider.user!.username.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                '@${authProvider.user!.username}',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+            if ((authProvider.user?.email ?? '').isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                authProvider.user!.email!,
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
+              ),
+            ],
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -1168,9 +1253,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ── Create Group Dialog ──────────────────────────────────
   void _showJoinGroupDialog() {
     final codeController = TextEditingController();
+    var inviteCodeAssistedByQr = false;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
         backgroundColor: AppColors.dialogBackground(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
@@ -1182,6 +1269,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             TextField(
               controller: codeController,
+              onChanged: (_) =>
+                  setDialogState(() => inviteCodeAssistedByQr = false),
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 hintText: 'Invite code',
@@ -1211,7 +1300,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     scannedCode.isEmpty) {
                   return;
                 }
-                codeController.text = scannedCode;
+                setDialogState(() {
+                  inviteCodeAssistedByQr = true;
+                  codeController.text = scannedCode;
+                });
               },
               icon: const Icon(Icons.qr_code_scanner),
               label: const Text('Scan QR'),
@@ -1238,7 +1330,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ElevatedButton(
             onPressed: () async {
               final inviteCode = codeController.text.trim();
-              await _joinGroupByInviteCode(inviteCode, dialogContext: context);
+              await _joinGroupByInviteCode(
+                inviteCode,
+                dialogContext: context,
+                entryMethod:
+                    inviteCodeAssistedByQr ? 'qr_assisted' : 'typed_submit',
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF8B1A2C),
@@ -1251,12 +1348,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+      ),
     );
   }
 
   Future<void> _joinGroupByInviteCode(
     String inviteCode, {
     BuildContext? dialogContext,
+    String entryMethod = 'typed_submit',
   }) async {
     final code = inviteCode.trim();
     if (code.isEmpty) {
@@ -1272,6 +1371,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final queued = await api.joinGroupByInviteCode(code);
+      unawaited(
+        TeamMeeterAnalytics.instance.logGroupJoin(
+          queuedOffline: queued,
+          entryMethod: entryMethod,
+        ),
+      );
       if (dialogContext != null && dialogContext.mounted) {
         Navigator.pop(dialogContext);
       }
@@ -1451,6 +1556,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           if (context.mounted) Navigator.of(context).pop();
                           final qrCode = response['qr_code']?.toString();
                           final queued = response['queued'] == true;
+                          unawaited(
+                            TeamMeeterAnalytics.instance.logGroupCreate(
+                              queuedOffline: queued,
+                              inviteQrEnabled: generateQr,
+                            ),
+                          );
                           if (!mounted) return;
                           if (generateQr &&
                               qrCode != null &&
@@ -1481,7 +1592,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ),
                             );
                           }
-                          _loadGroups();
+                          await _loadGroups(showError: false);
                         } catch (e) {
                           if (mounted) {
                             parentContext.showLatestSnackBar(
@@ -1564,6 +1675,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return GestureDetector(
       onTap: () {
         setState(() => _currentNavIndex = index);
+        if (index == 2) {
+          unawaited(
+            _conversationsScreenKey.currentState?.reloadConversations() ??
+                Future.value(),
+          );
+        }
+        if (index == 3) {
+          unawaited(
+            _loadGroups(
+              showError: false,
+              silent: true,
+              preservePreviousOnEmpty: true,
+            ),
+          );
+        }
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

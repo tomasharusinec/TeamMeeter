@@ -29,9 +29,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final notifications = await api.getNotifications();
-      await api.markNotificationsSeen();
       if (!mounted) return;
       setState(() => _notifications = notifications);
+      await api.markNotificationsSeen();
     } catch (e) {
       if (!mounted) return;
       context.showLatestSnackBar(
@@ -91,8 +91,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  int? _notificationId(Map<String, dynamic> n) {
+    final raw = n['id_notification'] ?? n['id'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  int _notificationType(Map<String, dynamic> notification) {
+    final type = notification['type'];
+    if (type is int) return type;
+    if (type is num) return type.toInt();
+    return int.tryParse(type?.toString() ?? '') ?? 0;
+  }
+
   String _notificationTitle(Map<String, dynamic> notification) {
-    final type = (notification['type'] as num?)?.toInt() ?? 0;
+    final type = _notificationType(notification);
     if (type == 3) {
       final requester =
           notification['requester_username']?.toString() ?? 'Niekto';
@@ -190,8 +204,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   itemCount: _notifications.length,
                   itemBuilder: (context, index) {
                     final notification = _notifications[index];
-                    final notificationId =
-                        (notification['id_notification'] as num?)?.toInt();
+                    final notificationId = _notificationId(notification);
                     final status = notification['membership_status']
                         ?.toString()
                         .toLowerCase();

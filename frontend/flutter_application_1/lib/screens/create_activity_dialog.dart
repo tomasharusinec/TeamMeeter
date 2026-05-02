@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -5,6 +7,7 @@ import '../models/group.dart';
 import '../models/role.dart';
 import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
+import '../services/teammeeter_analytics.dart';
 
 class CreateActivityDialog extends StatefulWidget {
   final List<Group> groups;
@@ -138,17 +141,26 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
           deadline: deadlineStr,
         );
         // Assign role if selected
+        var roleAssigned = false;
         if (_selectedRole != null && result['activity_id'] != null) {
           try {
             await api.assignActivityRole(
               result['activity_id'],
               _selectedRole!.idRole,
             );
+            roleAssigned = true;
           } catch (_) {
             // Role assignment is optional, don't fail the whole creation
           }
         }
         final queued = result['queued'] == true;
+        unawaited(
+          TeamMeeterAnalytics.instance.logActivityCreate(
+            isGroupActivity: true,
+            queuedOffline: queued,
+            roleAssigned: roleAssigned,
+          ),
+        );
         if (mounted) {
           Navigator.pop(context);
           widget.onActivityCreated?.call();
@@ -172,6 +184,13 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
           deadline: deadlineStr,
         );
         final queued = result['queued'] == true;
+        unawaited(
+          TeamMeeterAnalytics.instance.logActivityCreate(
+            isGroupActivity: false,
+            queuedOffline: queued,
+            roleAssigned: false,
+          ),
+        );
         if (mounted) {
           Navigator.pop(context);
           widget.onActivityCreated?.call();

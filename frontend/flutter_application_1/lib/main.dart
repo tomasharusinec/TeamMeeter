@@ -6,18 +6,26 @@ import 'providers/theme_provider.dart';
 import 'theme/app_colors.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
+import 'services/firebase_observability.dart';
 import 'services/push_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  var navigatorObservers = <NavigatorObserver>[];
+  try {
+    await configureFirebaseObservability();
+    navigatorObservers = [firebaseAnalyticsObserver];
+  } catch (_) {}
   try {
     await PushNotificationService.instance.ensureInitialized();
   } catch (_) {}
-  runApp(const MyApp());
+  runApp(MyApp(navigatorObservers: navigatorObservers));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.navigatorObservers = const []});
+
+  final List<NavigatorObserver> navigatorObservers;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +43,7 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: 'TeamMeeter',
             debugShowCheckedModeBanner: false,
+            navigatorObservers: navigatorObservers,
             themeMode: themeProvider.themeMode,
             theme: ThemeData(
               brightness: Brightness.light,

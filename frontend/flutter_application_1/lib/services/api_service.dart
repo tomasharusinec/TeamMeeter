@@ -10,7 +10,7 @@ import '../models/activity.dart';
 import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.105:5000';
+  static const String baseUrl = 'http://192.168.1.123:5000';
   static const String _activityCacheKey = 'cached_activities_v1';
   static const String _activityOpsKey = 'pending_activity_ops_v1';
   static const String _activityTempIdKey = 'activity_temp_id_seed_v1';
@@ -381,9 +381,18 @@ class ApiService {
     );
   }
 
+  int? _parseNotificationId(Map<String, dynamic> n) {
+    final raw = n['id_notification'] ?? n['id'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
   Future<void> _removeCachedNotification(int notificationId) async {
     final notifications = await _loadCachedNotifications();
-    notifications.removeWhere((n) => n['id_notification'] == notificationId);
+    notifications.removeWhere(
+      (n) => _parseNotificationId(n) == notificationId,
+    );
     await _saveCachedNotifications(notifications);
   }
 
@@ -393,7 +402,8 @@ class ApiService {
   }) async {
     final notifications = await _loadCachedNotifications();
     final updated = notifications.map((n) {
-      if (n['id_notification'] != notificationId) return n;
+      final id = _parseNotificationId(n);
+      if (id != notificationId) return n;
       return {...n, 'membership_status': accept ? 'accepted' : 'rejected'};
     }).toList();
     await _saveCachedNotifications(updated);
@@ -439,20 +449,24 @@ class ApiService {
   }
 
   Future<bool> hasUnreadNotifications() async {
-    final notifications = await getNotifications();
-    if (notifications.isEmpty) return false;
-    final seenAt = await _getNotificationsSeenAt();
-    if (seenAt == null) return true;
-    for (final notification in notifications) {
-      final createdAtRaw = notification['created_at']?.toString();
-      final createdAt = createdAtRaw == null
-          ? null
-          : DateTime.tryParse(createdAtRaw);
-      if (createdAt != null && createdAt.isAfter(seenAt)) {
-        return true;
+    try {
+      final notifications = await getNotifications();
+      if (notifications.isEmpty) return false;
+      final seenAt = await _getNotificationsSeenAt();
+      if (seenAt == null) return true;
+      for (final notification in notifications) {
+        final createdAtRaw = notification['created_at']?.toString();
+        final createdAt = createdAtRaw == null
+            ? null
+            : DateTime.tryParse(createdAtRaw);
+        if (createdAt != null && createdAt.isAfter(seenAt)) {
+          return true;
+        }
       }
+      return false;
+    } catch (_) {
+      return false;
     }
-    return false;
   }
 
   Future<List<Map<String, dynamic>>> _loadCachedConversations() async {
@@ -966,7 +980,8 @@ class ApiService {
 
   Future<List<Group>> getGroups() async {
     await _applyPersistedGroupMappingToCache();
-    unawaited(syncPendingActivityOperations());
+    // Dokončiť pending skupiny pred GET, inak nová skupina / join často chýba v odpovedi.
+    await syncPendingActivityOperations();
     try {
       final response = await http
           .get(Uri.parse('$baseUrl/groups/'), headers: _headers)
@@ -2716,14 +2731,27 @@ class ApiService {
           .get(Uri.parse('$baseUrl/notifications'), headers: _headers)
           .timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final notifications = List<Map<String, dynamic>>.from(
-          data['notifications'],
-        );
+        final decoded = jsonDecode(response.body);
+        final data = decoded is Map<String, dynamic>
+            ? decoded
+            : <String, dynamic>{};
+        final raw = data['notifications'];
+        final list = raw is List ? raw : <dynamic>[];
+        final notifications = <Map<String, dynamic>>[];
+        for (final item in list) {
+          if (item is Map<String, dynamic>) {
+            notifications.add(item);
+          } else if (item is Map) {
+            notifications.add(Map<String, dynamic>.from(item));
+          }
+        }
         await _saveCachedNotifications(notifications);
         return notifications;
       }
-      return _loadCachedNotifications();
+      throw _buildApiException(
+        response,
+        'Nepodarilo sa načítať notifikácie',
+      );
     } catch (e) {
       if (!_isConnectivityError(e)) rethrow;
       return _loadCachedNotifications();

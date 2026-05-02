@@ -9,16 +9,17 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../services/teammeeter_analytics.dart';
 import '../utils/snackbar_utils.dart';
 
 class ConversationsScreen extends StatefulWidget {
   const ConversationsScreen({super.key});
 
   @override
-  State<ConversationsScreen> createState() => _ConversationsScreenState();
+  State<ConversationsScreen> createState() => ConversationsScreenState();
 }
 
-class _ConversationsScreenState extends State<ConversationsScreen> {
+class ConversationsScreenState extends State<ConversationsScreen> {
   bool _isLoading = true;
   bool _isCreatingConversation = false;
   List<Map<String, dynamic>> _conversations = [];
@@ -26,7 +27,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadConversations();
+    _loadConversations(showLoadingIndicator: true);
   }
 
   Future<void> _showCreateConversationDialog() async {
@@ -114,12 +115,17 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                       );
                       if (!mounted) return;
                       Navigator.of(dialogContext).pop();
-                      await _loadConversations();
+                      await _loadConversations(showLoadingIndicator: true);
                       await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ChatScreen(
                             conversationId: conversationId,
                             title: name,
+                            onConversationMetadataChanged: () {
+                              if (mounted) {
+                                _loadConversations(showLoadingIndicator: false);
+                              }
+                            },
                           ),
                         ),
                       );
@@ -162,8 +168,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         .toList();
   }
 
-  Future<void> _loadConversations() async {
-    if (mounted) setState(() => _isLoading = true);
+  /// Voliteľné obnovenie zoznamu (napr. po prepnutí na záložku Chat v HomeScreen).
+  Future<void> reloadConversations() =>
+      _loadConversations(showLoadingIndicator: false);
+
+  Future<void> _loadConversations({bool showLoadingIndicator = true}) async {
+    if (showLoadingIndicator && mounted) setState(() => _isLoading = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final results = await Future.wait([
@@ -191,7 +201,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (showLoadingIndicator && mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -244,7 +256,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       return Stack(
         children: [
           RefreshIndicator(
-            onRefresh: _loadConversations,
+            onRefresh: () =>
+                _loadConversations(showLoadingIndicator: false),
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: const [
@@ -277,7 +290,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     return Stack(
       children: [
         RefreshIndicator(
-          onRefresh: _loadConversations,
+          onRefresh: () => _loadConversations(showLoadingIndicator: false),
           child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 84),
             itemCount: _conversations.length,
@@ -319,10 +332,19 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                               builder: (_) => ChatScreen(
                                 conversationId: conversationId,
                                 title: name,
+                                onConversationMetadataChanged: () {
+                                  if (mounted) {
+                                    _loadConversations(
+                                      showLoadingIndicator: false,
+                                    );
+                                  }
+                                },
                               ),
                             ),
                           );
-                          if (mounted) _loadConversations();
+                          if (mounted) {
+                            _loadConversations(showLoadingIndicator: false);
+                          }
                         },
                 ),
               );
@@ -348,11 +370,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 class ChatScreen extends StatefulWidget {
   final int conversationId;
   final String title;
+  /// Napr. obnovenie zoznamu konverzácií po pridaní účastníka.
+  final VoidCallback? onConversationMetadataChanged;
 
   const ChatScreen({
     super.key,
     required this.conversationId,
     required this.title,
+    this.onConversationMetadataChanged,
   });
 
   @override
@@ -571,6 +596,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (!mounted) return;
                 Navigator.of(dialogContext).pop();
                 await _loadParticipants();
+                widget.onConversationMetadataChanged?.call();
                 context.showLatestSnackBar(
                   const SnackBar(
                     content: Text('Účastník bol pridaný'),
@@ -726,6 +752,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
+    final isReply = _replyingTo != null;
     final replyPrefix = _replyingTo == null
         ? ''
         : 'Reply to ${_replyingTo!['sender_username'] ?? 'user'}: '
@@ -733,8 +760,11 @@ class _ChatScreenState extends State<ChatScreen> {
     final payloadText = '$replyPrefix$text';
 
     setState(() => _isSending = true);
+    var usedSocketTransport = false;
+    var shouldLogChatSend = false;
     try {
       if (_socket != null && _isSocketConnected) {
+        usedSocketTransport = true;
         _socket!.add(
           jsonEncode({
             'type': 'send_message',
@@ -742,6 +772,7 @@ class _ChatScreenState extends State<ChatScreen> {
             'text': payloadText,
           }),
         );
+        shouldLogChatSend = true;
       } else {
         final api = Provider.of<AuthProvider>(context, listen: false).apiService;
         await api.queueOfflineConversationMessage(
@@ -749,6 +780,7 @@ class _ChatScreenState extends State<ChatScreen> {
           text: payloadText,
         );
         _addLocalPendingMessage(payloadText);
+        shouldLogChatSend = true;
         if (!mounted) return;
         context.showLatestSnackBar(
           const SnackBar(
@@ -765,6 +797,8 @@ class _ChatScreenState extends State<ChatScreen> {
         text: payloadText,
       );
       _addLocalPendingMessage(payloadText);
+      usedSocketTransport = false;
+      shouldLogChatSend = true;
       if (!mounted) return;
       _messageController.clear();
       context.showLatestSnackBar(
@@ -774,6 +808,15 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
     } finally {
+      if (shouldLogChatSend) {
+        unawaited(
+          TeamMeeterAnalytics.instance.logChatMessageSend(
+            conversationId: widget.conversationId,
+            socketConnected: usedSocketTransport,
+            isReply: isReply,
+          ),
+        );
+      }
       if (mounted) {
         setState(() {
           _isSending = false;

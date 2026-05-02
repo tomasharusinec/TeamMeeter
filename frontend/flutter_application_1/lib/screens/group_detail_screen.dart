@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/group.dart';
@@ -5,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
+import '../services/teammeeter_analytics.dart';
 import 'group_basic_information_screen.dart';
 import 'chat_screen.dart';
 import 'group_activities_screen.dart';
@@ -30,6 +33,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(
+        TeamMeeterAnalytics.instance.logGroupOpen(
+          groupId: widget.group.idGroup,
+        ),
+      );
+    });
     _loadGroupDetails();
   }
 
