@@ -221,7 +221,11 @@ def assign_user_role(group_id):
         user_id = user_row["id_registration"]
         cursor.execute("""
             INSERT INTO user_role (user_id, role_id) VALUES (%s, %s)
+            ON CONFLICT (user_id, role_id) DO NOTHING
         """, (user_id, role_id))
+        if cursor.rowcount == 0:
+            db.commit()
+            return {"message": "User already has this role"}, 200
         db.commit()
     except:
         db.rollback()

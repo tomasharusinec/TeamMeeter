@@ -135,7 +135,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     }
   }
 
-  Widget _buildProfileAvatar(AuthProvider authProvider) {
+  Widget _buildProfileAvatar(BuildContext context, AuthProvider authProvider) {
     final user = authProvider.user;
     final token = authProvider.token;
     final localPath = authProvider.localProfilePhotoPath;
@@ -151,7 +151,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(color: const Color(0xFF8B1A2C), width: 2),
-        color: const Color(0xFF2D1515),
+        color: AppColors.avatarPlaceholderBackground(context),
       ),
       clipBehavior: Clip.antiAlias,
       child: hasLocalImage
@@ -161,11 +161,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
               '${ApiService.baseUrl}/users/me/profile-picture',
               fit: BoxFit.cover,
               headers: {'Authorization': 'Bearer $token'},
-              errorBuilder: (context, error, stackTrace) => Center(
+              errorBuilder: (ctx, error, stackTrace) => Center(
                 child: Text(
                   fallbackLetter,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.avatarPlaceholderLetter(ctx),
                     fontWeight: FontWeight.w700,
                     fontSize: 30,
                   ),
@@ -175,8 +175,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           : Center(
               child: Text(
                 fallbackLetter,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppColors.avatarPlaceholderLetter(context),
                   fontWeight: FontWeight.w700,
                   fontSize: 30,
                 ),
@@ -196,6 +196,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: textPrimary,
         title: const Text('Upraviť vzhľad profilu'),
       ),
       body: Container(
@@ -214,7 +215,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 8),
-                Center(child: _buildProfileAvatar(authProvider)),
+                Center(child: _buildProfileAvatar(context, authProvider)),
                 const SizedBox(height: 12),
                 Text(
                   user?.displayName ?? user?.username ?? 'Používateľ',
@@ -232,7 +233,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                     color: (isDarkMode ? const Color(0xFF1A0A0A) : Colors.white)
                         .withAlpha(204),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withAlpha(30)),
+                    border: Border.all(
+                      color: AppColors.listCardBorder(context),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

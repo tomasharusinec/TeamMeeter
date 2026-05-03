@@ -27,7 +27,6 @@ class GroupDetailScreen extends StatefulWidget {
 class _GroupDetailScreenState extends State<GroupDetailScreen> {
   bool _isDeleting = false;
   bool _isLeaving = false;
-  bool _canAccessGroupActivities = false;
   Group? _fullGroup;
 
   @override
@@ -47,13 +46,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final group = await api.getGroupDetails(widget.group.idGroup);
-      final hasActivityAccess = await api.hasGroupActivityAccess(widget.group.idGroup);
-      if (mounted) setState(() => _fullGroup = group);
-      if (mounted) {
-        setState(() => _canAccessGroupActivities = hasActivityAccess);
-      }
+      if (!mounted) return;
+      setState(() => _fullGroup = group);
     } catch (_) {
-      // Ignore for now; option checks handle permission/errors.
+      // Ostáva widget.group; prístup ku aktivitám sa overí až pri otvorení obrazovky aktivít.
     }
   }
 
@@ -190,6 +186,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         title: const Text('Group'),
         centerTitle: true,
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: AppColors.textPrimary(context),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -212,16 +209,18 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     vertical: 18,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A0A0A).withAlpha(190),
+                    color: AppColors.panelTranslucent(context),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withAlpha(18)),
+                    border: Border.all(
+                      color: AppColors.listCardBorder(context),
+                    ),
                   ),
                   child: Column(
                     children: [
-                      const Text(
+                      Text(
                         'Selected group',
                         style: TextStyle(
-                          color: Colors.white54,
+                          color: AppColors.textSecondary(context),
                           fontSize: 12,
                           letterSpacing: 0.6,
                         ),
@@ -237,8 +236,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                       Text(
                         shownGroup.name,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
                           fontSize: 24,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.2,
@@ -312,25 +311,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   },
                 ),
                 const SizedBox(height: 10),
-                if (_canAccessGroupActivities)
-                  _OptionButton(
-                    text: 'Group activities',
-                    icon: Icons.playlist_add_check_circle_outlined,
-                    onPressed: () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => GroupActivitiesScreen(
-                            groupId: shownGroup.idGroup,
-                            groupName: shownGroup.name,
-                          ),
+                _OptionButton(
+                  text: 'Group activities',
+                  icon: Icons.playlist_add_check_circle_outlined,
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => GroupActivitiesScreen(
+                          groupId: shownGroup.idGroup,
+                          groupName: shownGroup.name,
                         ),
-                      );
-                      if (mounted) {
-                        _loadGroupDetails();
-                      }
+                      ),
+                    );
+                    if (mounted) {
+                      _loadGroupDetails();
                     }
-                  ),
-                if (_canAccessGroupActivities) const SizedBox(height: 10),
+                  },
+                ),
+                const SizedBox(height: 10),
                 _OptionButton(
                   text: 'Chat',
                   icon: Icons.chat_bubble_outline,
@@ -350,6 +348,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                           builder: (_) => ChatScreen(
                             conversationId: conversationId,
                             title: details.name,
+                            groupId: shownGroup.idGroup,
+                            onConversationMetadataChanged: () {
+                              if (mounted) {
+                                _loadGroupDetails();
+                              }
+                            },
                           ),
                         ),
                       );
@@ -406,9 +410,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFFFB3B3),
-                      side: BorderSide(color: Colors.white.withAlpha(40)),
-                      backgroundColor: const Color(0xFF1A0A0A).withAlpha(90),
+                      foregroundColor: AppColors.isDark(context)
+                          ? const Color(0xFFFFB3B3)
+                          : const Color(0xFFB71C1C),
+                      side: BorderSide(
+                        color: AppColors.outlineStrong(context),
+                      ),
+                      backgroundColor: AppColors.panelTranslucent(context),
                       padding: const EdgeInsets.symmetric(vertical: 11),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -445,7 +453,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         color: Color(0xFFE57373),
                         width: 1.4,
                       ),
-                      backgroundColor: const Color(0xFF1A0A0A).withAlpha(120),
+                      backgroundColor: AppColors.panelTranslucentStrong(context),
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -491,19 +499,22 @@ class _OptionButton extends StatelessWidget {
                 ),
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white60),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textMuted(context),
+            ),
           ],
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF2A1111),
-          foregroundColor: Colors.white,
+          backgroundColor: AppColors.surfaceSecondary(context),
+          foregroundColor: AppColors.textPrimary(context),
           elevation: 0,
           alignment: Alignment.centerLeft,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          side: BorderSide(color: Colors.white.withAlpha(20)),
+          side: BorderSide(color: AppColors.listCardBorderMedium(context)),
         ),
       ),
     );
@@ -538,9 +549,9 @@ class _GroupAvatar extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A0A0A),
+                color: AppColors.dialogBackground(context),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withAlpha(26)),
+                border: Border.all(color: AppColors.outlineMuted(context)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -559,25 +570,24 @@ class _GroupAvatar extends StatelessWidget {
                             imageUrl,
                             fit: BoxFit.contain,
                             headers: {'Authorization': 'Bearer $token'},
-                            errorBuilder: (_, error, stackTrace) =>
-                                const SizedBox(
-                                  height: 220,
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.groups_rounded,
-                                      color: Colors.white70,
-                                      size: 72,
-                                    ),
-                                  ),
+                            errorBuilder: (_, error, stackTrace) => SizedBox(
+                              height: 220,
+                              child: Center(
+                                child: Icon(
+                                  Icons.groups_rounded,
+                                  color: AppColors.textMuted(context),
+                                  size: 72,
                                 ),
+                              ),
+                            ),
                           );
                         }
-                        return const SizedBox(
+                        return SizedBox(
                           height: 220,
                           child: Center(
                             child: Icon(
                               Icons.groups_rounded,
-                              color: Colors.white70,
+                              color: AppColors.textMuted(context),
                               size: 72,
                             ),
                           ),
@@ -601,8 +611,11 @@ class _GroupAvatar extends StatelessWidget {
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withAlpha(80), width: 1.5),
-          color: const Color(0xFF2A1111),
+          border: Border.all(
+            color: AppColors.outlineStrong(context),
+            width: 1.5,
+          ),
+          color: AppColors.avatarPlaceholderBackground(context),
         ),
         clipBehavior: Clip.antiAlias,
         child: FutureBuilder(
@@ -617,16 +630,16 @@ class _GroupAvatar extends StatelessWidget {
                 imageUrl,
                 fit: BoxFit.cover,
                 headers: {'Authorization': 'Bearer $token'},
-                errorBuilder: (_, error, stackTrace) => const Icon(
+                errorBuilder: (_, error, stackTrace) => Icon(
                   Icons.groups_rounded,
-                  color: Colors.white70,
+                  color: AppColors.textMuted(context),
                   size: 28,
                 ),
               );
             }
-            return const Icon(
+            return Icon(
               Icons.groups_rounded,
-              color: Colors.white70,
+              color: AppColors.textMuted(context),
               size: 28,
             );
           },

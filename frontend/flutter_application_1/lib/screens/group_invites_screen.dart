@@ -120,6 +120,7 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
       appBar: AppBar(
         title: const Text('Invites'),
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: textPrimary,
       ),
       body: Container(
         width: double.infinity,
@@ -133,8 +134,10 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
           ),
         ),
         child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.circularProgressOnBackground(context),
+                ),
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -145,9 +148,11 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A0A0A).withAlpha(190),
+                      color: AppColors.panelTranslucent(context),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withAlpha(20)),
+                      border: Border.all(
+                        color: AppColors.listCardBorderMedium(context),
+                      ),
                     ),
                     child: SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -209,7 +214,7 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
                       label: const Text('Copy invite code'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: textPrimary,
-                        side: BorderSide(color: textSecondary),
+                        side: BorderSide(color: AppColors.outlineStrong(context)),
                       ),
                     ),
                   ] else ...[

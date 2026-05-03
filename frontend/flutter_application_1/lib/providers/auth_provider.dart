@@ -1,8 +1,13 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
+
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/user.dart';
 import '../services/api_service.dart';
+import '../services/push_notification_service.dart';
 import '../services/teammeeter_analytics.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -39,6 +44,19 @@ class AuthProvider with ChangeNotifier {
       registrationDate: source.registrationDate,
       hasProfilePicture: hasProfilePicture,
     );
+  }
+
+  Future<void> _runPushTokenSyncAfterAuth() async {
+    try {
+      await PushNotificationService.instance.syncPushTokenWithBackend(_apiService);
+    } catch (e, st) {
+      developer.log(
+        'AuthProvider: FCM sync výnimka',
+        name: 'TeamMeeterFCM',
+        error: e,
+        stackTrace: st,
+      );
+    }
   }
 
   bool _isConnectivityError(Object error) {
@@ -113,8 +131,13 @@ class AuthProvider with ChangeNotifier {
       }
     }
     if (_user != null) {
-      final id = _user!.idRegistration.toString();
-      await TeamMeeterAnalytics.instance.setUserId(id);
+      final id = _user!.idRegistration;
+      await TeamMeeterAnalytics.instance.setUserId(id != null ? '$id' : null);
+    }
+    // FCM registrácia potrebuje len JWT — volaj vždy keď je token, nie len keď je _user
+    // (inak po SSO / oneskorenom getCurrentUser ostane user_push_token prázdna).
+    if (_token != null) {
+      await _runPushTokenSyncAfterAuth();
     }
     _isInitializing = false;
     notifyListeners();
@@ -144,6 +167,7 @@ class AuthProvider with ChangeNotifier {
         _user?.idRegistration.toString(),
       );
       await TeamMeeterAnalytics.instance.logLogin(method: 'email');
+      await _runPushTokenSyncAfterAuth();
     } catch (e) {
       rethrow;
     } finally {
@@ -196,6 +220,7 @@ class AuthProvider with ChangeNotifier {
         _user?.idRegistration.toString(),
       );
       await TeamMeeterAnalytics.instance.logSignUp(method: 'email');
+      await _runPushTokenSyncAfterAuth();
     } catch (e) {
       rethrow;
     } finally {
@@ -225,6 +250,7 @@ class AuthProvider with ChangeNotifier {
         _user?.idRegistration.toString(),
       );
       await TeamMeeterAnalytics.instance.logLogin(method: 'google');
+      await _runPushTokenSyncAfterAuth();
     } catch (e) {
       rethrow;
     } finally {
@@ -269,6 +295,7 @@ class AuthProvider with ChangeNotifier {
         await prefs.remove(_localProfilePhotoPathKey);
         await prefs.remove(_localProfilePhotoRemovedKey);
         notifyListeners();
+        await _runPushTokenSyncAfterAuth();
       }
     } catch (e) {
       if (_isConnectivityError(e) && _user == null) {

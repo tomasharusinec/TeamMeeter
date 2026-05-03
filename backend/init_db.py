@@ -163,6 +163,46 @@ def _migrate_push_token_table(cursor, conn):
     )
     conn.commit()
 
+
+def _ensure_user_push_token_token_unique(cursor, conn):
+    """
+    Staršie inštalácie mohli mať user_push_token bez UNIQUE(token).
+    Bez toho INSERT ... ON CONFLICT (token) vždy padne → žiadne riadky v tabuľke.
+    """
+    cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.constraint_column_usage ccu
+              ON tc.constraint_schema = ccu.constraint_schema
+             AND tc.constraint_name = ccu.constraint_name
+            WHERE tc.table_schema = 'public'
+              AND tc.table_name = 'user_push_token'
+              AND tc.constraint_type = 'UNIQUE'
+              AND ccu.column_name = 'token'
+        )
+        """
+    )
+    if cursor.fetchone()[0]:
+        conn.commit()
+        return
+    try:
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS user_push_token_token_key
+            ON user_push_token (token)
+            """
+        )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        print(
+            "Warning: nepodarilo sa pridať UNIQUE na user_push_token(token); "
+            f"push registrácia môže zlyhávať, kým sa DB neopraví: {exc}"
+        )
+
+
 # This function was generated using AI (Gemini) with slight manual refinements
 def init_db():
     """
@@ -245,6 +285,7 @@ def init_db():
             _migrate_group_capacity_column(cursor, conn)
             _migrate_notification_tables(cursor, conn)
             _migrate_push_token_table(cursor, conn)
+            _ensure_user_push_token_token_unique(cursor, conn)
         except Exception as e:
             conn.rollback()
             print(f"Error applying migrations: {e}")

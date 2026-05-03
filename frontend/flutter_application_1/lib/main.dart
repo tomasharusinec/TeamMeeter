@@ -1,3 +1,6 @@
+import 'dart:developer' as developer;
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -11,14 +14,29 @@ import 'services/push_notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   var navigatorObservers = <NavigatorObserver>[];
   try {
     await configureFirebaseObservability();
     navigatorObservers = [firebaseAnalyticsObserver];
-  } catch (_) {}
+  } catch (e, st) {
+    developer.log(
+      'main: configureFirebaseObservability zlyhalo',
+      name: 'TeamMeeterFCM',
+      error: e,
+      stackTrace: st,
+    );
+  }
   try {
     await PushNotificationService.instance.ensureInitialized();
-  } catch (_) {}
+  } catch (e, st) {
+    developer.log(
+      'main: PushNotificationService.ensureInitialized zlyhalo',
+      name: 'TeamMeeterFCM',
+      error: e,
+      stackTrace: st,
+    );
+  }
   runApp(MyApp(navigatorObservers: navigatorObservers));
 }
 
@@ -146,6 +164,16 @@ class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
   @override
   Widget build(BuildContext context) {
     final gradientColors = AppColors.screenGradient(context);
+    final dark = AppColors.isDark(context);
+    final heroIconColor = dark ? Colors.white : const Color(0xFF1A1A1A);
+    final heroTitleStyle = TextStyle(
+      color: heroIconColor,
+      fontSize: 32,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.8,
+    );
+    final subtitleColor =
+        dark ? Colors.white.withAlpha(210) : const Color(0xFF4A4A4A);
     return Scaffold(
       body: AnimatedBuilder(
         animation: _controller,
@@ -172,11 +200,17 @@ class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
                       height: 120,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white.withAlpha(18),
+                        color: dark
+                            ? Colors.white.withAlpha(18)
+                            : const Color(0xFF8B1A2C).withAlpha(28),
                         border: Border.all(
-                          color: Colors.white.withAlpha(
-                            (80 + (90 * glow)).toInt(),
-                          ),
+                          color: dark
+                              ? Colors.white.withAlpha(
+                                  (80 + (90 * glow)).toInt(),
+                                )
+                              : const Color(0xFF8B1A2C).withAlpha(
+                                  (100 + (80 * glow)).toInt(),
+                                ),
                           width: 2,
                         ),
                         boxShadow: [
@@ -189,27 +223,19 @@ class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
                           ),
                         ],
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.groups_rounded,
-                        color: Colors.white,
+                        color: heroIconColor,
                         size: 58,
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Text(
-                      'TeamMeeter',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
+                    Text('TeamMeeter', style: heroTitleStyle),
                     const SizedBox(height: 8),
                     Text(
                       'Preparing your workspace...',
                       style: TextStyle(
-                        color: Colors.white.withAlpha(210),
+                        color: subtitleColor,
                         fontSize: 14,
                       ),
                     ),
@@ -223,7 +249,9 @@ class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
                         valueColor: const AlwaysStoppedAnimation<Color>(
                           Color(0xFFE57373),
                         ),
-                        backgroundColor: Colors.white.withAlpha(35),
+                        backgroundColor: dark
+                            ? Colors.white.withAlpha(35)
+                            : Colors.black.withAlpha(22),
                       ),
                     ),
                   ],

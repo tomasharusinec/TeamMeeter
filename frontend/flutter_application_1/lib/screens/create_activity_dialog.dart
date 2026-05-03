@@ -24,10 +24,16 @@ class CreateActivityDialog extends StatefulWidget {
 }
 
 class _CreateActivityDialogState extends State<CreateActivityDialog> {
+  static const String _roleNone = '__none__';
+  static const String _roleAll = '__all__';
+  static const String _rolePick = '__pick__';
+
   final _nameController = TextEditingController();
   DateTime? _selectedDeadline;
   Group? _selectedGroup;
-  Role? _selectedRole;
+  /// `__none__` | `__all__` | `__pick__` | `'${idRole}'` pre jednu rolu
+  String _roleChoice = _roleNone;
+  final Set<int> _pickedRoleIds = {};
   List<Role> _roles = [];
   bool _isLoadingRoles = false;
   bool _isCreating = false;
@@ -46,7 +52,8 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
       if (mounted) {
         setState(() {
           _roles = roles;
-          _selectedRole = null;
+          _roleChoice = _roleNone;
+          _pickedRoleIds.clear();
         });
       }
     } catch (e) {
@@ -63,17 +70,27 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
       initialDate: _selectedDeadline ?? now.add(const Duration(days: 1)),
       firstDate: now,
       lastDate: DateTime(now.year + 5),
-      builder: (context, child) {
+      builder: (pickerCtx, child) {
+        final dark = AppColors.isDark(pickerCtx);
         return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF8B1A2C),
-              onPrimary: Colors.white,
-              surface: Color(0xFF1A0A0A),
-              onSurface: Colors.white,
-            ),
-            dialogTheme: const DialogThemeData(
-              backgroundColor: Color(0xFF1A0A0A),
+          data: Theme.of(pickerCtx).copyWith(
+            colorScheme: dark
+                ? const ColorScheme.dark(
+                    primary: Color(0xFF8B1A2C),
+                    onPrimary: Colors.white,
+                    surface: Color(0xFF1A0A0A),
+                    onSurface: Colors.white,
+                  )
+                : const ColorScheme.light(
+                    primary: Color(0xFF8B1A2C),
+                    onPrimary: Colors.white,
+                    surface: Color(0xFFF2ECEC),
+                    onSurface: Color(0xFF1A1A1A),
+                  ),
+            dialogTheme: DialogThemeData(
+              backgroundColor: dark
+                  ? const Color(0xFF1A0A0A)
+                  : const Color(0xFFF2ECEC),
             ),
           ),
           child: child!,
@@ -84,17 +101,27 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
       final time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.now(),
-        builder: (context, child) {
+        builder: (pickerCtx, child) {
+          final dark = AppColors.isDark(pickerCtx);
           return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: const ColorScheme.dark(
-                primary: Color(0xFF8B1A2C),
-                onPrimary: Colors.white,
-                surface: Color(0xFF1A0A0A),
-                onSurface: Colors.white,
-              ),
-              dialogTheme: const DialogThemeData(
-                backgroundColor: Color(0xFF1A0A0A),
+            data: Theme.of(pickerCtx).copyWith(
+              colorScheme: dark
+                  ? const ColorScheme.dark(
+                      primary: Color(0xFF8B1A2C),
+                      onPrimary: Colors.white,
+                      surface: Color(0xFF1A0A0A),
+                      onSurface: Colors.white,
+                    )
+                  : const ColorScheme.light(
+                      primary: Color(0xFF8B1A2C),
+                      onPrimary: Colors.white,
+                      surface: Color(0xFFF2ECEC),
+                      onSurface: Color(0xFF1A1A1A),
+                    ),
+              dialogTheme: DialogThemeData(
+                backgroundColor: dark
+                    ? const Color(0xFF1A0A0A)
+                    : const Color(0xFFF2ECEC),
               ),
             ),
             child: child!,
@@ -130,6 +157,21 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
 
     setState(() => _isCreating = true);
     try {
+      if (_selectedGroup != null &&
+          _roleChoice == _rolePick &&
+          _pickedRoleIds.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Pri „Vybrať roly“ označ aspoň jednu rolu, alebo zmeň typ priradenia.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final deadlineStr = _selectedDeadline?.toUtc().toIso8601String();
 
@@ -140,17 +182,36 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
           name: name,
           deadline: deadlineStr,
         );
-        // Assign role if selected
+        // Priradenie rolí (žiadna / jedna / všetky) — voliteľné, chyby priradenia nechajú aktivitu vytvorenú
         var roleAssigned = false;
-        if (_selectedRole != null && result['activity_id'] != null) {
-          try {
-            await api.assignActivityRole(
-              result['activity_id'],
-              _selectedRole!.idRole,
-            );
-            roleAssigned = true;
-          } catch (_) {
-            // Role assignment is optional, don't fail the whole creation
+        final rawId = result['activity_id'];
+        final activityId = rawId is int
+            ? rawId
+            : (rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? ''));
+        if (activityId != null && activityId > 0) {
+          if (_roleChoice == _roleAll) {
+            for (final r in _roles) {
+              try {
+                await api.assignActivityRole(activityId, r.idRole);
+                roleAssigned = true;
+              } catch (_) {}
+            }
+          } else if (_roleChoice == _rolePick) {
+            final ids = _pickedRoleIds.toList()..sort();
+            for (final roleId in ids) {
+              try {
+                await api.assignActivityRole(activityId, roleId);
+                roleAssigned = true;
+              } catch (_) {}
+            }
+          } else if (_roleChoice != _roleNone) {
+            final roleId = int.tryParse(_roleChoice);
+            if (roleId != null) {
+              try {
+                await api.assignActivityRole(activityId, roleId);
+                roleAssigned = true;
+              } catch (_) {}
+            }
           }
         }
         final queued = result['queued'] == true;
@@ -251,7 +312,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                     Color(0xFFD8D2D2),
                   ],
           ),
-          border: Border.all(color: Colors.white.withAlpha(26)),
+          border: Border.all(color: AppColors.outlineMuted(context)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withAlpha(128),
@@ -372,8 +433,9 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                       onChanged: (group) {
                         setState(() {
                           _selectedGroup = group;
-                          _selectedRole = null;
+                          _roleChoice = _roleNone;
                           _roles = [];
+                          _pickedRoleIds.clear();
                         });
                         if (group != null) {
                           _loadRoles(group.idGroup);
@@ -415,16 +477,9 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                             ),
                           )
                         : DropdownButtonHideUnderline(
-                            child: DropdownButton<Role?>(
-                              value: _selectedRole,
+                            child: DropdownButton<String>(
+                              value: _roleChoice,
                               isExpanded: true,
-                              hint: const Text(
-                                'Žiadna rola',
-                                style: TextStyle(
-                                  color: Color(0xFF999999),
-                                  fontSize: 14,
-                                ),
-                              ),
                               dropdownColor: const Color(0xFFF5F0F0),
                               icon: const Icon(
                                 Icons.arrow_drop_down,
@@ -435,13 +490,37 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                                 fontSize: 14,
                               ),
                               items: [
-                                const DropdownMenuItem<Role?>(
-                                  value: null,
+                                const DropdownMenuItem<String>(
+                                  value: _roleNone,
                                   child: Text('Žiadna rola'),
                                 ),
+                                DropdownMenuItem<String>(
+                                  value: _roleAll,
+                                  enabled: _roles.isNotEmpty,
+                                  child: Text(
+                                    'Všetky roly v skupine',
+                                    style: TextStyle(
+                                      color: _roles.isEmpty
+                                          ? const Color(0xFFBBBBBB)
+                                          : const Color(0xFF333333),
+                                    ),
+                                  ),
+                                ),
+                                DropdownMenuItem<String>(
+                                  value: _rolePick,
+                                  enabled: _roles.isNotEmpty,
+                                  child: Text(
+                                    'Vybrať roly na pridelenie',
+                                    style: TextStyle(
+                                      color: _roles.isEmpty
+                                          ? const Color(0xFFBBBBBB)
+                                          : const Color(0xFF333333),
+                                    ),
+                                  ),
+                                ),
                                 ..._roles.map(
-                                  (r) => DropdownMenuItem<Role?>(
-                                    value: r,
+                                  (r) => DropdownMenuItem<String>(
+                                    value: '${r.idRole}',
                                     child: Row(
                                       children: [
                                         if (r.color != null)
@@ -456,17 +535,113 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                                               shape: BoxShape.circle,
                                             ),
                                           ),
-                                        Text(r.name),
+                                        Expanded(
+                                          child: Text(
+                                            r.name,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
                                 ),
                               ],
-                              onChanged: (role) =>
-                                  setState(() => _selectedRole = role),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  if (_roleChoice == _rolePick &&
+                                      value != _rolePick) {
+                                    _pickedRoleIds.clear();
+                                  }
+                                  _roleChoice = value;
+                                });
+                              },
                             ),
                           ),
                   ),
+                  if (_selectedGroup != null &&
+                      !_isLoadingRoles &&
+                      _roleChoice == _rolePick &&
+                      _roles.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Označ roly (${_pickedRoleIds.length} vybratých):',
+                        style: TextStyle(
+                          color: AppColors.textPrimary(context),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 200,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F0F0),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.black.withAlpha(20)),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: ListView(
+                            primary: false,
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            children: _roles.map((r) {
+                            final checked = _pickedRoleIds.contains(r.idRole);
+                            return CheckboxListTile(
+                              value: checked,
+                              onChanged: (v) {
+                                setState(() {
+                                  if (v == true) {
+                                    _pickedRoleIds.add(r.idRole);
+                                  } else {
+                                    _pickedRoleIds.remove(r.idRole);
+                                  }
+                                });
+                              },
+                              dense: true,
+                              fillColor: WidgetStateProperty.resolveWith(
+                                (states) => states.contains(WidgetState.selected)
+                                    ? const Color(0xFF8B1A2C)
+                                    : null,
+                              ),
+                              checkColor: Colors.white,
+                              title: Row(
+                                children: [
+                                  if (r.color != null)
+                                    Container(
+                                      width: 10,
+                                      height: 10,
+                                      margin: const EdgeInsets.only(right: 8),
+                                      decoration: BoxDecoration(
+                                        color: _parseColor(r.color!),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      r.name,
+                                      style: const TextStyle(
+                                        color: Color(0xFF333333),
+                                        fontSize: 14,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              controlAffinity:
+                                  ListTileControlAffinity.leading,
+                            );
+                          }).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
 
                 const SizedBox(height: 28),

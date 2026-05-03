@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
+import 'group_member_detail_screen.dart';
 
 class GroupMembersScreen extends StatefulWidget {
   final int groupId;
@@ -193,6 +194,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
       appBar: AppBar(
         title: const Text('Members'),
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: AppColors.textPrimary(context),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -211,19 +213,23 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2A1111),
+                    color: AppColors.surfaceSecondary(context),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withAlpha(20)),
+                    border: Border.all(
+                      color: AppColors.listCardBorderMedium(context),
+                    ),
                   ),
                   child: Row(
                     children: [
                       Expanded(
                         child: TextField(
                           controller: _usernameController,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: AppColors.textPrimary(context)),
                           decoration: InputDecoration(
                             hintText: 'Username to add',
-                            hintStyle: const TextStyle(color: Colors.white54),
+                            hintStyle: TextStyle(
+                              color: AppColors.textDisabled(context),
+                            ),
                             isDense: true,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -231,7 +237,7 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: BorderSide(
-                                color: Colors.white.withAlpha(26),
+                                color: AppColors.outlineMuted(context),
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
@@ -241,7 +247,9 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                               ),
                             ),
                             filled: true,
-                            fillColor: const Color(0xFF1A0A0A),
+                            fillColor: AppColors.isDark(context)
+                                ? const Color(0xFF1A0A0A)
+                                : const Color(0xFFF8F5F5),
                           ),
                           onSubmitted: (_) => _isAdding ? null : _addMember(),
                         ),
@@ -270,14 +278,20 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                 const SizedBox(height: 12),
                 Expanded(
                   child: _isLoading
-                      ? const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
+                      ? Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.circularProgressOnBackground(
+                              context,
+                            ),
+                          ),
                         )
                       : _members.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Text(
                             'No members found',
-                            style: TextStyle(color: Colors.white70),
+                            style: TextStyle(
+                              color: AppColors.textMuted(context),
+                            ),
                           ),
                         )
                       : RefreshIndicator(
@@ -296,10 +310,10 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1A0A0A).withAlpha(200),
+                                  color: AppColors.listCardBackground(context),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: Colors.white.withAlpha(15),
+                                    color: AppColors.listCardBorder(context),
                                   ),
                                 ),
                                 child: ListTile(
@@ -315,12 +329,14 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                                   ),
                                   title: Text(
                                     _memberDisplayName(member),
-                                    style: const TextStyle(color: Colors.white),
+                                    style: TextStyle(
+                                      color: AppColors.textPrimary(context),
+                                    ),
                                   ),
                                   subtitle: Text(
                                     '@${member['username'] ?? '-'}',
-                                    style: const TextStyle(
-                                      color: Colors.white60,
+                                    style: TextStyle(
+                                      color: AppColors.textMuted(context),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -333,18 +349,47 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                                             color: Color(0xFFE57373),
                                           ),
                                         )
-                                      : isCurrentUser
-                                      ? const SizedBox.shrink()
-                                      : IconButton(
-                                          onPressed: userId == null
-                                              ? null
-                                              : () => _removeMember(member),
-                                          icon: const Icon(
-                                            Icons.person_remove_outlined,
-                                            color: Color(0xFFE57373),
-                                          ),
-                                          tooltip: 'Remove member',
+                                      : Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (!isCurrentUser)
+                                              IconButton(
+                                                onPressed: userId == null
+                                                    ? null
+                                                    : () =>
+                                                        _removeMember(member),
+                                                icon: const Icon(
+                                                  Icons
+                                                      .person_remove_outlined,
+                                                  color: Color(0xFFE57373),
+                                                ),
+                                                tooltip: 'Remove member',
+                                              ),
+                                            Icon(
+                                              Icons.chevron_right,
+                                              color: AppColors.textDisabled(
+                                                context,
+                                              ),
+                                            ),
+                                          ],
                                         ),
+                                  onTap: userId == null
+                                      ? null
+                                      : () async {
+                                          await Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  GroupMemberDetailScreen(
+                                                groupId: widget.groupId,
+                                                groupName: widget.groupName,
+                                                member: member,
+                                              ),
+                                            ),
+                                          );
+                                          if (mounted) {
+                                            await _loadMembers();
+                                          }
+                                        },
                                 ),
                               );
                             },

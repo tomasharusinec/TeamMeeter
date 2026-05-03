@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -22,6 +25,15 @@ import 'group_detail_screen.dart';
 import 'notifications_screen.dart';
 import 'user_settings_screen.dart';
 
+int? _pushParseInt(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is double) return value.round();
+  final s = value.toString().trim();
+  if (s.isEmpty) return null;
+  return int.tryParse(s);
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -38,14 +50,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isLoading = true;
   bool _isGroupsLoading = false;
   bool _isUpdatingActivityStatus = false;
-  bool _isCreatingGroup = false;
   bool _showOfflineBanner = false;
   bool _hasPendingSync = false;
   bool _hasAnyNotifications = false;
   int _activitiesLoadRequestId = 0;
   int _groupsLoadRequestId = 0;
+  int _groupsNonSilentInflight = 0;
   Timer? _offlineSyncTimer;
   StreamSubscription<Map<String, dynamic>>? _notificationTapSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _offlineSyncRunning = false;
 
   bool _isExpiredActivity(Activity activity) {
     final deadline = activity.parsedDeadline;
@@ -58,16 +72,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadData();
-    _initPushNotifications();
     _refreshOfflineBannerState();
     _offlineSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
       await _runOfflineSyncInBackground();
       await _refreshOfflineBannerState();
       await _refreshNotificationIndicator();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) {
+      if (!mounted) return;
+      final hasLink = results.any((r) => r != ConnectivityResult.none);
+      if (hasLink) {
+        unawaited(_runOfflineSyncInBackground());
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      authProvider.ensureCurrentUserLoaded();
+      await authProvider.ensureCurrentUserLoaded();
+      if (!mounted) return;
+      await _initPushNotifications();
     });
   }
 
@@ -75,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _offlineSyncTimer?.cancel();
+    _connectivitySubscription?.cancel();
     _notificationTapSubscription?.cancel();
     super.dispose();
   }
@@ -102,8 +127,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (initialData != null) {
         _handlePushTapData(initialData);
       }
-    } catch (_) {
-      // App remains functional even without push setup.
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('TeamMeeter: _initPushNotifications zlyhal: $e\n$st');
+      }
     }
   }
 
@@ -119,28 +146,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _handlePushTapData(Map<String, dynamic> data) async {
     if (!mounted) return;
 
-    final rawType = data['notification_type']?.toString();
-    final type = int.tryParse(rawType ?? '');
-    final conversationIdRaw = data['conversation_id']?.toString();
-    final conversationId = int.tryParse(conversationIdRaw ?? '');
-    final activityIdRaw = data['activity_id']?.toString();
-    final activityId = int.tryParse(activityIdRaw ?? '');
+    final type = _pushParseInt(data['notification_type']);
+    final conversationId = _pushParseInt(data['conversation_id']);
+    final activityId = _pushParseInt(data['activity_id']);
+    final messageId = _pushParseInt(data['message_id']);
 
-    if (conversationId != null && conversationId > 0) {
+    Future<void> openChat(int convId) async {
       unawaited(
         TeamMeeterAnalytics.instance.logPushNotificationOpen(
           notificationType: 'chat',
-          conversationId: conversationId,
+          conversationId: convId,
         ),
       );
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      String title = 'Conversation #$conversationId';
+      var title = 'Conversation #$convId';
       final titleFromPush = data['conversation_name']?.toString().trim();
       if (titleFromPush != null && titleFromPush.isNotEmpty) {
         title = titleFromPush;
       }
       try {
-        final conversation = await api.getConversation(conversationId);
+        final conversation = await api.getConversation(convId);
         final resolvedTitle = conversation['name']?.toString().trim();
         if (resolvedTitle != null && resolvedTitle.isNotEmpty) {
           title = resolvedTitle;
@@ -150,8 +175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) =>
-              ChatScreen(conversationId: conversationId, title: title),
+          builder: (_) => ChatScreen(conversationId: convId, title: title),
         ),
       );
       if (!mounted) return;
@@ -160,47 +184,107 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Future.value(),
       );
       await _refreshNotificationIndicator();
-      return;
     }
 
-    if (type == 1) {
+    Future<void> openNotificationsList() async {
       unawaited(
         TeamMeeterAnalytics.instance.logPushNotificationOpen(
-          notificationType: 'message_generic',
+          notificationType: 'notifications_list',
         ),
       );
-      // For message notifications, fallback to notifications list when payload
-      // misses conversation id (older push payloads).
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+      );
       if (!mounted) return;
       await _refreshNotificationIndicator();
-      return;
     }
 
-    if ((type == 2 || type == 5) && activityId != null && activityId > 0) {
+    Future<void> goToMainHomeTab() async {
       unawaited(
         TeamMeeterAnalytics.instance.logPushNotificationOpen(
-          notificationType: type == 2 ? 'activity_new' : 'activity_completed',
+          notificationType: 'home_tasks_tab',
+        ),
+      );
+      final nav = Navigator.of(context);
+      nav.popUntil((route) => route.isFirst);
+      if (!mounted) return;
+      setState(() => _currentNavIndex = 1);
+      await _loadData();
+      await _refreshNotificationIndicator();
+    }
+
+    Future<bool> tryOpenActivityFromPush() async {
+      if (activityId == null || activityId <= 0) return false;
+      final t = type;
+      final analyticsType = t == 2
+          ? 'activity_new'
+          : t == 4
+              ? 'activity_assigned'
+              : t == 5
+                  ? 'activity_completed'
+                  : 'activity_unknown';
+      unawaited(
+        TeamMeeterAnalytics.instance.logPushNotificationOpen(
+          notificationType: analyticsType,
           activityId: activityId,
         ),
       );
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       try {
         final activity = await api.getActivityDetails(activityId);
-        if (!mounted) return;
+        if (!mounted) return true;
         await showDialog<void>(
           context: context,
           builder: (_) =>
               ActivityDetailDialog(activity: activity, onDeleted: _loadData),
         );
-        if (!mounted) return;
+        if (!mounted) return true;
         await _loadData();
-        return;
+        return true;
       } catch (_) {
-        // If detail cannot be fetched, fallback to notifications list below.
+        return false;
       }
+    }
+
+    // Správy musia ísť pred typom 6: pri niektorých zariadeniach/FCM payload môže byť
+    // notification_type nespoľahlivý; message_id posielame len pri správach z backendu.
+    final isMessagePush =
+        (type == 1 || (messageId != null && messageId > 0)) &&
+        conversationId != null &&
+        conversationId > 0;
+    if (isMessagePush) {
+      await openChat(conversationId);
+      return;
+    }
+
+    if (type == 1) {
+      await openNotificationsList();
+      return;
+    }
+
+    // 3 — pozvánka do skupiny / konverzácie → obrazovka notifikácií (odpovede)
+    if (type == 3) {
+      await openNotificationsList();
+      return;
+    }
+
+    // 6 — expirovaná aktivita (bez message_id) → hlavné menu (stredná záložka Úlohy)
+    if (type == 6 && (messageId == null || messageId <= 0)) {
+      await goToMainHomeTab();
+      return;
+    }
+
+    // Staršie push-e: len conversation_id bez typu / neznámy typ
+    if (conversationId != null && conversationId > 0) {
+      await openChat(conversationId);
+      return;
+    }
+
+    // 2, 4, 5 — nová / priradená / dokončená aktivita
+    if ((type == 2 || type == 4 || type == 5) &&
+        activityId != null &&
+        activityId > 0) {
+      if (await tryOpenActivityFromPush()) return;
     }
 
     unawaited(
@@ -208,11 +292,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         notificationType: 'notifications_fallback',
       ),
     );
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
-    if (!mounted) return;
-    await _refreshNotificationIndicator();
+    await openNotificationsList();
   }
 
   Future<void> _loadData() async {
@@ -254,26 +334,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _runOfflineSyncInBackground() async {
+    if (_offlineSyncRunning || !mounted) return;
+    _offlineSyncRunning = true;
     try {
-      if (!mounted) return;
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      final pendingBefore = await api.getPendingOfflineChangesCount();
       await api.syncPendingActivityOperations();
-      final pendingAfter = await api.getPendingOfflineChangesCount();
-      final reachable = await api.isServerReachable();
-      final syncedSomething = pendingAfter < pendingBefore;
-      // Keep My Tasks continuously fresh in background (server when online,
-      // cache when offline) without blocking UI.
+      final reachableAfter = await api.isServerReachable();
+      // My Tasks: priebežne z cache / servera
       await _loadActivities(showError: false);
-      if (reachable && syncedSomething && mounted) {
+      // Ak je backend dostupný, vždy stiahni čerstvý zoznam skupín (nie len pri
+      // zmenšení fronty) — HTTP „reachable“ pred/po synci často ostane true pri
+      // len lokálnom WiFi, takže samotný návrat siete rieši aj connectivity stream.
+      if (reachableAfter && mounted) {
         await _loadGroups(
           showError: false,
           silent: true,
-          preservePreviousOnEmpty: true,
+          preservePreviousOnEmpty: false,
+        );
+        await _refreshNotificationIndicator();
+        unawaited(
+          _conversationsScreenKey.currentState?.reloadConversations() ??
+              Future.value(),
         );
       }
       await _refreshOfflineBannerState();
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _offlineSyncRunning = false;
+    }
   }
 
   Future<void> _loadActivities({bool showError = true}) async {
@@ -304,7 +392,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     bool preservePreviousOnEmpty = true,
   }) async {
     final requestId = ++_groupsLoadRequestId;
-    if (!silent && mounted) setState(() => _isGroupsLoading = true);
+    if (!silent) {
+      _groupsNonSilentInflight++;
+      if (mounted) setState(() => _isGroupsLoading = true);
+    }
     try {
       if (!mounted) return;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -333,8 +424,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
     } finally {
-      if (!silent && mounted && requestId == _groupsLoadRequestId) {
-        setState(() => _isGroupsLoading = false);
+      if (!silent) {
+        _groupsNonSilentInflight--;
+        if (_groupsNonSilentInflight < 0) _groupsNonSilentInflight = 0;
+        if (mounted && _groupsNonSilentInflight == 0) {
+          setState(() => _isGroupsLoading = false);
+        }
       }
     }
   }
@@ -432,9 +527,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             },
             icon: Stack(
               children: [
-                const Icon(
+                Icon(
                   Icons.notifications_outlined,
-                  color: Colors.white,
+                  color: AppColors.textPrimary(context),
                   size: 28,
                 ),
                 if (_hasAnyNotifications)
@@ -463,8 +558,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ? 'Calendar'
                   : 'My tasks',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
@@ -477,7 +572,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 : 'Switch to dark mode',
             icon: Icon(
               isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-              color: Colors.white,
+              color: AppColors.textPrimary(context),
               size: 24,
             ),
           ),
@@ -489,8 +584,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               height: 36,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white54, width: 2),
-                color: const Color(0xFF2D1515),
+                border: Border.all(
+                  color: isDarkMode
+                      ? Colors.white54
+                      : const Color(0xFF000000).withAlpha(26),
+                  width: 2,
+                ),
+                color: AppColors.avatarPlaceholderBackground(context),
               ),
               clipBehavior: Clip.antiAlias,
               child: _buildUserAvatarContent(
@@ -507,8 +607,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // ── Tasks / Activities View ──────────────────────────────
   Widget _buildTasksView() {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+      return Center(
+        child: CircularProgressIndicator(
+          color: AppColors.circularProgressOnBackground(context),
+        ),
       );
     }
 
@@ -561,12 +663,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ? null
                   : () => _showCompletedTasksDialog(completedActivities),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2D1515),
-                foregroundColor: Colors.white70,
+                backgroundColor: AppColors.columnHeaderBackground(context),
+                foregroundColor: AppColors.textMuted(context),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.white.withAlpha(26)),
+                  side: BorderSide(
+                    color: AppColors.columnHeaderBorder(context),
+                  ),
                 ),
               ),
               child: const Text(
@@ -598,12 +702,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final isActiveDrop = candidateData.isNotEmpty;
         return Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1A0A0A).withAlpha(204),
+            color: AppColors.listCardBackground(context),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isActiveDrop
-                  ? const Color(0xFFE57373).withAlpha(120)
-                  : Colors.white.withAlpha(13),
+              color: AppColors.taskColumnBorder(
+                context,
+                activeDrop: isActiveDrop,
+              ),
               width: isActiveDrop ? 1.5 : 1,
             ),
           ),
@@ -617,18 +722,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   horizontal: 16,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2D1515),
+                  color: AppColors.columnHeaderBackground(context),
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
                   ),
-                  border: Border.all(color: Colors.white.withAlpha(13)),
+                  border: Border.all(
+                    color: AppColors.columnHeaderBorder(context),
+                  ),
                 ),
                 child: Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.textPrimary(context),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -644,8 +751,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           title == 'To-do'
                               ? 'No tasks yet'
                               : 'No tasks in progress',
-                          style: const TextStyle(
-                            color: Colors.white38,
+                          style: TextStyle(
+                            color: AppColors.textDisabled(context),
                             fontSize: 12,
                           ),
                           textAlign: TextAlign.center,
@@ -779,10 +886,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Completed tasks',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary(context),
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                     ),
@@ -790,10 +897,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   const SizedBox(height: 10),
                   Expanded(
                     child: completedActivities.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Text(
                               'No completed tasks',
-                              style: TextStyle(color: Colors.white60),
+                              style: TextStyle(
+                                color: AppColors.textMuted(context),
+                              ),
                             ),
                           )
                         : ListView.builder(
@@ -815,8 +924,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: OutlinedButton(
                       onPressed: () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.white.withAlpha(60)),
-                        foregroundColor: Colors.white70,
+                        side: BorderSide(
+                          color: AppColors.outlineStrong(context),
+                        ),
+                        foregroundColor: AppColors.textMuted(context),
                       ),
                       child: const Text('Close'),
                     ),
@@ -844,22 +955,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         (_isLoading || _isGroupsLoading) && _groups.isEmpty;
 
     if (showBlockingLoader) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+      return Center(
+        child: CircularProgressIndicator(
+          color: AppColors.circularProgressOnBackground(context),
+        ),
       );
     }
 
     return Stack(
       children: [
         if (_isGroupsLoading)
-          const Positioned(
+          Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: LinearProgressIndicator(
               minHeight: 3,
-              color: Color(0xFF8B1A2C),
-              backgroundColor: Colors.white24,
+              color: const Color(0xFF8B1A2C),
+              backgroundColor: AppColors.linearTrackBackground(context),
             ),
           ),
         RefreshIndicator(
@@ -876,13 +989,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     Icon(
                       Icons.group_outlined,
                       size: 64,
-                      color: Colors.white.withAlpha(77),
+                      color: AppColors.textDisabled(context),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'No groups yet',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38),
+                      style: TextStyle(
+                        color: AppColors.textDisabled(context),
+                      ),
                     ),
                   ],
                 )
@@ -901,9 +1016,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A0A0A).withAlpha(210),
+              color: AppColors.fabMenuPanel(context),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withAlpha(20)),
+              border: Border.all(
+                color: AppColors.listCardBorderMedium(context),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withAlpha(50),
@@ -951,11 +1068,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           elevation: 0,
           backgroundColor: isPrimary
               ? const Color(0xFF8B1A2C)
-              : const Color(0xFF2A1111),
-          foregroundColor: Colors.white,
+              : AppColors.groupActionSecondary(context),
+          foregroundColor: isPrimary
+              ? Colors.white
+              : AppColors.textPrimary(context),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.white.withAlpha(isPrimary ? 0 : 38)),
+            side: BorderSide(
+              color: isPrimary
+                  ? Colors.transparent
+                  : AppColors.surfaceSecondaryBorder(context),
+            ),
           ),
         ),
         icon: Icon(icon, size: 18),
@@ -971,9 +1094,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A0A0A).withAlpha(204),
+        color: AppColors.listCardBackground(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withAlpha(13)),
+        border: Border.all(color: AppColors.listCardBorder(context)),
       ),
       child: ListTile(
         onTap: () async {
@@ -999,16 +1122,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         title: Text(
           group.name,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: AppColors.textPrimary(context),
             fontWeight: FontWeight.w500,
           ),
         ),
         subtitle: Text(
           group.createDate ?? '',
-          style: const TextStyle(color: Colors.white38, fontSize: 12),
+          style: TextStyle(
+            color: AppColors.textDisabled(context),
+            fontSize: 12,
+          ),
         ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: AppColors.textDisabled(context),
+        ),
       ),
     );
   }
@@ -1027,7 +1156,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: const Color(0xFF2D1515),
+        color: AppColors.avatarPlaceholderBackground(context),
         borderRadius: BorderRadius.circular(12),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1048,8 +1177,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 return Center(
                   child: Text(
                     fallbackLetter,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppColors.avatarPlaceholderLetter(context),
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1059,8 +1188,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               errorBuilder: (_, __, ___) => Center(
                 child: Text(
                   fallbackLetter,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.avatarPlaceholderLetter(context),
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
@@ -1071,8 +1200,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return Center(
             child: Text(
               fallbackLetter,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppColors.avatarPlaceholderLetter(context),
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -1107,7 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Text(
             fallbackText,
             style: TextStyle(
-              color: Colors.white,
+              color: AppColors.avatarPlaceholderLetter(context),
               fontWeight: FontWeight.w600,
               fontSize: userSize,
             ),
@@ -1120,7 +1249,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Text(
         fallbackText,
         style: TextStyle(
-          color: Colors.white,
+          color: AppColors.avatarPlaceholderLetter(context),
           fontWeight: FontWeight.w600,
           fontSize: userSize,
         ),
@@ -1146,7 +1275,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: AppColors.dragHandle(context),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1157,7 +1286,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: const Color(0xFF8B1A2C), width: 2),
-                color: const Color(0xFF2D1515),
+                color: AppColors.avatarPlaceholderBackground(context),
               ),
               clipBehavior: Clip.antiAlias,
               child: _buildUserAvatarContent(
@@ -1169,8 +1298,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Text(
               authProvider.user?.displayName ??
                   (authProvider.token != null ? 'Loading profile...' : 'User'),
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
@@ -1180,8 +1309,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 4),
               Text(
                 '@${authProvider.user!.username}',
-                style: const TextStyle(
-                  color: Colors.white70,
+                style: TextStyle(
+                  color: AppColors.textMuted(context),
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1191,7 +1320,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(height: 4),
               Text(
                 authProvider.user!.email!,
-                style: const TextStyle(color: Colors.white54, fontSize: 14),
+                style: TextStyle(
+                  color: AppColors.textSecondary(context),
+                  fontSize: 14,
+                ),
               ),
             ],
             const SizedBox(height: 24),
@@ -1214,8 +1346,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 icon: const Icon(Icons.tune),
                 label: const Text('Upraviť vzhľad profilu'),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.white.withAlpha(70)),
-                  foregroundColor: Colors.white,
+                  side: BorderSide(color: AppColors.outlineStrong(context)),
+                  foregroundColor: AppColors.textPrimary(context),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -1281,7 +1413,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.white.withAlpha(51)),
+                  borderSide: BorderSide(
+                    color: AppColors.outlineMuted(context),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -1309,7 +1443,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               label: const Text('Scan QR'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Theme.of(context).colorScheme.onSurface,
-                side: BorderSide(color: Colors.white.withAlpha(70)),
+                side: BorderSide(color: AppColors.outlineStrong(context)),
                 minimumSize: const Size.fromHeight(44),
               ),
             ),
@@ -1410,17 +1544,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final nameController = TextEditingController();
     final capacityController = TextEditingController(text: '10');
     bool generateQr = false;
+    var dialogSubmitting = false;
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.dialogBackground(context),
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.dialogBackground(dialogContext),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text(
             'Create Group',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            style: TextStyle(
+              color: Theme.of(dialogContext).colorScheme.onSurface,
+            ),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1428,24 +1565,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               TextField(
                 controller: nameController,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
+                  color: Theme.of(dialogContext).colorScheme.onSurface,
                 ),
                 decoration: InputDecoration(
                   labelText: 'Group name',
                   hintText: 'Enter group name',
                   labelStyle: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color: Theme.of(dialogContext).brightness == Brightness.dark
                         ? Colors.white70
                         : Colors.black54,
                   ),
                   hintStyle: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color: Theme.of(dialogContext).brightness == Brightness.dark
                         ? Colors.white38
                         : Colors.black45,
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withAlpha(51)),
+                    borderSide: BorderSide(
+                      color: AppColors.outlineMuted(dialogContext),
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1458,24 +1597,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 controller: capacityController,
                 keyboardType: TextInputType.number,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
+                  color: Theme.of(dialogContext).colorScheme.onSurface,
                 ),
                 decoration: InputDecoration(
                   labelText: 'Group capacity',
                   hintText: 'Max number of members',
                   labelStyle: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color: Theme.of(dialogContext).brightness == Brightness.dark
                         ? Colors.white70
                         : Colors.black54,
                   ),
                   hintStyle: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color: Theme.of(dialogContext).brightness == Brightness.dark
                         ? Colors.white38
                         : Colors.black45,
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withAlpha(51)),
+                    borderSide: BorderSide(
+                      color: AppColors.outlineMuted(dialogContext),
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1492,13 +1633,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 title: Text(
                   'Generate invite QR code',
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
+                    color: Theme.of(dialogContext).colorScheme.onSurface,
                   ),
                 ),
                 subtitle: Text(
                   'Other users can join using this code.',
                   style: TextStyle(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color:
+                        Theme.of(dialogContext).brightness == Brightness.dark
                         ? Colors.white60
                         : Colors.black54,
                     fontSize: 12,
@@ -1512,102 +1654,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: dialogSubmitting
+                  ? null
+                  : () => Navigator.pop(dialogContext),
               child: Text(
                 'Cancel',
                 style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark
+                  color: Theme.of(dialogContext).brightness == Brightness.dark
                       ? Colors.white54
                       : Colors.black54,
                 ),
               ),
             ),
             ElevatedButton(
-              onPressed: _isCreatingGroup
+              onPressed: dialogSubmitting
                   ? null
                   : () async {
                       final groupName = nameController.text.trim();
                       final capacityText = capacityController.text.trim();
                       final capacity = int.tryParse(capacityText);
 
-                      if (groupName.isNotEmpty &&
-                          capacity != null &&
-                          capacity > 0) {
-                        try {
-                          if (mounted) setState(() => _isCreatingGroup = true);
-                          final api = Provider.of<AuthProvider>(
-                            parentContext,
-                            listen: false,
-                          ).apiService;
-                          final currentUser = Provider.of<AuthProvider>(
-                            parentContext,
-                            listen: false,
-                          ).user;
-                          final response = await api.createGroup(
-                            groupName,
-                            capacity: capacity,
-                            generateQr: generateQr,
-                            creatorUserId: currentUser?.idRegistration,
-                            creatorUsername: currentUser?.username,
-                            creatorName: currentUser?.name,
-                            creatorSurname: currentUser?.surname,
-                          );
-                          FocusScope.of(context).unfocus();
-                          if (context.mounted) Navigator.of(context).pop();
-                          final qrCode = response['qr_code']?.toString();
-                          final queued = response['queued'] == true;
-                          unawaited(
-                            TeamMeeterAnalytics.instance.logGroupCreate(
-                              queuedOffline: queued,
-                              inviteQrEnabled: generateQr,
-                            ),
-                          );
-                          if (!mounted) return;
-                          if (generateQr &&
-                              qrCode != null &&
-                              qrCode.isNotEmpty &&
-                              !queued) {
-                            parentContext.showLatestSnackBar(
-                              SnackBar(
-                                content: const Text(
-                                  'Group created. QR code is ready.',
-                                ),
-                                backgroundColor: const Color(0xFF8B1A2C),
-                                action: SnackBarAction(
-                                  label: 'Show QR',
-                                  textColor: Colors.white,
-                                  onPressed: () =>
-                                      _showCreatedGroupQrDialog(qrCode),
-                                ),
-                              ),
-                            );
-                          }
-                          if (queued) {
-                            parentContext.showLatestSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Skupina bola uložená offline. Po pripojení sa zosynchronizuje.',
-                                ),
-                                backgroundColor: Color(0xFFEF6C00),
-                              ),
-                            );
-                          }
-                          await _loadGroups(showError: false);
-                        } catch (e) {
-                          if (mounted) {
-                            parentContext.showLatestSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  e.toString().replaceAll('Exception: ', ''),
-                                ),
-                                backgroundColor: const Color(0xFF8B1A2C),
-                              ),
-                            );
-                          }
-                        } finally {
-                          if (mounted) setState(() => _isCreatingGroup = false);
-                        }
-                      } else {
+                      if (groupName.isEmpty ||
+                          capacity == null ||
+                          capacity <= 0) {
                         parentContext.showLatestSnackBar(
                           const SnackBar(
                             content: Text(
@@ -1616,6 +1685,94 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             backgroundColor: Color(0xFF8B1A2C),
                           ),
                         );
+                        return;
+                      }
+
+                      setDialogState(() => dialogSubmitting = true);
+                      try {
+                        final api = Provider.of<AuthProvider>(
+                          parentContext,
+                          listen: false,
+                        ).apiService;
+                        final currentUser = Provider.of<AuthProvider>(
+                          parentContext,
+                          listen: false,
+                        ).user;
+                        final response = await api.createGroup(
+                          groupName,
+                          capacity: capacity,
+                          generateQr: generateQr,
+                          creatorUserId: currentUser?.idRegistration,
+                          creatorUsername: currentUser?.username,
+                          creatorName: currentUser?.name,
+                          creatorSurname: currentUser?.surname,
+                        );
+                        if (dialogContext.mounted) {
+                          FocusScope.of(dialogContext).unfocus();
+                          Navigator.of(dialogContext).pop();
+                        }
+                        final qrCode = response['qr_code']?.toString();
+                        final queued = response['queued'] == true;
+                        unawaited(
+                          TeamMeeterAnalytics.instance.logGroupCreate(
+                            queuedOffline: queued,
+                            inviteQrEnabled: generateQr,
+                          ),
+                        );
+                        if (!mounted) return;
+                        if (generateQr &&
+                            qrCode != null &&
+                            qrCode.isNotEmpty &&
+                            !queued) {
+                          final navigator = Navigator.of(this.context);
+                          this.context.showLatestSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                'Group created. QR code is ready.',
+                              ),
+                              backgroundColor: const Color(0xFF8B1A2C),
+                              action: SnackBarAction(
+                                label: 'Show QR',
+                                textColor: Colors.white,
+                                onPressed: () {
+                                  navigator.push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => _GroupQrCodeScreen(
+                                        qrCode: qrCode,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        }
+                        if (queued) {
+                          this.context.showLatestSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Skupina bola uložená offline. Po pripojení sa zosynchronizuje.',
+                              ),
+                              backgroundColor: Color(0xFFEF6C00),
+                            ),
+                          );
+                        }
+                        await _loadGroups(showError: false);
+                      } catch (e) {
+                        if (mounted) {
+                          this.context.showLatestSnackBar(
+                            SnackBar(
+                              content: Text(
+                                e.toString().replaceAll('Exception: ', ''),
+                              ),
+                              backgroundColor: const Color(0xFF8B1A2C),
+                            ),
+                          );
+                        }
+                      } finally {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => dialogSubmitting = false);
+                        }
                       }
                     },
               style: ElevatedButton.styleFrom(
@@ -1625,7 +1782,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: _isCreatingGroup
+              child: dialogSubmitting
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -1642,18 +1799,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _showCreatedGroupQrDialog(String qrCode) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => _GroupQrCodeScreen(qrCode: qrCode)),
-    );
-  }
-
   // ── Bottom Navigation Bar matching Figma ─────────────────
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0D0D),
-        border: Border(top: BorderSide(color: Colors.white.withAlpha(26))),
+        color: AppColors.navBarBackground(context),
+        border: Border(
+          top: BorderSide(color: AppColors.navBarTopBorder(context)),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 32),
@@ -1702,7 +1855,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
         child: Icon(
           icon,
-          color: isActive ? const Color(0xFFE57373) : Colors.white54,
+          color: isActive
+              ? AppColors.navIconActive
+              : AppColors.navIconInactive(context),
           size: isCenter ? 30 : 26,
         ),
       ),
@@ -1721,21 +1876,17 @@ class _GroupQrCodeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Group invite QR'),
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: AppColors.textPrimary(context),
       ),
       body: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF8B1A2C),
-              Color(0xFF3D0C0C),
-              Color(0xFF1A0A0A),
-              Color(0xFF0D0D0D),
-            ],
-            stops: [0.0, 0.25, 0.55, 1.0],
+            colors: AppColors.fullScreenGradient(context),
+            stops: const [0.0, 0.25, 0.55, 1.0],
           ),
         ),
         child: Column(
@@ -1755,16 +1906,16 @@ class _GroupQrCodeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Share this QR or invite code with users.',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: AppColors.textMuted(context)),
             ),
             const SizedBox(height: 10),
             Text(
               qrCode,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
               ),
@@ -1784,8 +1935,8 @@ class _GroupQrCodeScreen extends StatelessWidget {
               icon: const Icon(Icons.copy),
               label: const Text('Copy code'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white70),
+                foregroundColor: AppColors.textPrimary(context),
+                side: BorderSide(color: AppColors.outlineStrong(context)),
               ),
             ),
           ],
@@ -1856,6 +2007,7 @@ class _QrScannerScreenState extends State<_QrScannerScreen> {
       appBar: AppBar(
         title: const Text('Scan group QR'),
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: AppColors.textPrimary(context),
       ),
       body: _scannerError != null
           ? Center(
@@ -1864,16 +2016,16 @@ class _QrScannerScreenState extends State<_QrScannerScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.qr_code_scanner_outlined,
                       size: 56,
-                      color: Colors.white70,
+                      color: AppColors.textMuted(context),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       _scannerError!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70),
+                      style: TextStyle(color: AppColors.textMuted(context)),
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton(
@@ -1885,7 +2037,11 @@ class _QrScannerScreenState extends State<_QrScannerScreen> {
               ),
             )
           : !_scannerReady
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? Center(
+              child: CircularProgressIndicator(
+                color: AppColors.circularProgressOnBackground(context),
+              ),
+            )
           : Stack(
               children: [
                 MobileScanner(

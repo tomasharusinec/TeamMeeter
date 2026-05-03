@@ -82,15 +82,32 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  Future<String?> _obtainGoogleIdToken() async {
+    await _googleInitFuture;
+    await _googleSignIn.signOut();
+    Future<GoogleSignInAccount> authenticate() => _googleSignIn.authenticate(
+          scopeHint: const ['email', 'profile'],
+        );
+    GoogleSignInAccount account = await authenticate();
+    GoogleSignInAuthentication auth = account.authentication;
+    String? idToken = auth.idToken;
+    // First pick of a freshly added Google account on device sometimes returns
+    // an empty id_token; one short retry after sign-out usually fixes it.
+    if (idToken == null || idToken.isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return null;
+      await _googleSignIn.signOut();
+      account = await authenticate();
+      auth = account.authentication;
+      idToken = auth.idToken;
+    }
+    return idToken;
+  }
+
   Future<void> _signInWithGoogle() async {
     try {
-      await _googleInitFuture;
-      await _googleSignIn.signOut();
-      final account = await _googleSignIn.authenticate(
-        scopeHint: const ['email', 'profile'],
-      );
-      final auth = account.authentication;
-      final idToken = auth.idToken;
+      final idToken = await _obtainGoogleIdToken();
+      if (!mounted) return;
       if (idToken == null || idToken.isEmpty) {
         throw Exception(
           'Google ID token nebol získaný. Skontroluj GOOGLE_WEB_CLIENT_ID.',
@@ -209,10 +226,10 @@ class _LoginScreenState extends State<LoginScreen>
                             },
                           ),
                           const SizedBox(height: 16),
-                          const Text(
+                          Text(
                             'or',
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: AppColors.textSecondary(context),
                               fontSize: 14,
                             ),
                           ),
@@ -265,10 +282,10 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                           const SizedBox(height: 12),
-                          const Text(
+                          Text(
                             "Don't have an account?",
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: AppColors.textSecondary(context),
                               fontSize: 13,
                             ),
                           ),
@@ -418,6 +435,9 @@ class TeamMeeterLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = AppColors.isDark(context)
+        ? Colors.white
+        : const Color(0xFF1A1A1A);
     return SizedBox(
       width: size,
       height: size + 6,
@@ -430,12 +450,12 @@ class TeamMeeterLogo extends StatelessWidget {
             height: size,
             margin: const EdgeInsets.only(top: 6),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.white, width: 2),
+              border: Border.all(color: ink, width: 2),
               borderRadius: BorderRadius.circular(size * 0.22),
             ),
             child: Icon(
               Icons.videocam_outlined,
-              color: Colors.white,
+              color: ink,
               size: size * 0.44,
             ),
           ),
@@ -446,7 +466,7 @@ class TeamMeeterLogo extends StatelessWidget {
               width: 3,
               height: 12,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: ink,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -458,7 +478,7 @@ class TeamMeeterLogo extends StatelessWidget {
               width: 3,
               height: 12,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: ink,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

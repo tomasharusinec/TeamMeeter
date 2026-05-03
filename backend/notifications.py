@@ -1,3 +1,6 @@
+import json
+import logging
+
 from flasgger import swag_from
 from flask import request
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -6,6 +9,8 @@ from flask import Blueprint
 from helper_func import get_current_user_id, db, load_yaml
 from websocket_handler import broadcast_to_users
 from push_notifications import send_push_to_users
+
+logger = logging.getLogger(__name__)
 
 notifications_blueprint = Blueprint('notifications', __name__)
 cursor = db.cursor(cursor_factory=RealDictCursor)
@@ -287,6 +292,7 @@ def create_activity_expired_notification(
         body=f"Deadline passed in {location}. Activity was removed.",
         data={
             "notification_type": str(NOTIFICATION_TYPE_ACTIVITY_EXPIRED),
+            "notification_id": str(notif_id),
             "activity_name": activity_name,
             "group_name": group_name or "",
         },
@@ -299,11 +305,20 @@ def register_push_token():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
 
-    if not request.is_json:
+    if current_user_id is None:
+        return {"message": "Unknown user"}, 401
+
+    payload = request.get_json(silent=True)
+    if payload is None and request.data:
+        try:
+            payload = json.loads(request.data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = None
+    if not isinstance(payload, dict):
         return {"message": "Invalid format!"}, 400
 
-    token = str(request.json.get("token", "")).strip()
-    platform = str(request.json.get("platform", "")).strip().lower() or None
+    token = str(payload.get("token", "")).strip()
+    platform = str(payload.get("platform", "")).strip().lower() or None
 
     if not token:
         return {"message": "token is required"}, 400
@@ -324,8 +339,9 @@ def register_push_token():
                 (current_user_id, token, platform),
             )
             db.commit()
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        logger.exception("register_push_token failed: %s", exc)
         return {"message": "Failed to register push token!"}, 500
 
     return {"message": "Push token registered successfully"}, 200

@@ -16,10 +16,9 @@ except Exception:
     google_id_token = None
 
 authorization_blueprint = Blueprint('authorization', __name__)
-cursor = db.cursor(cursor_factory=RealDictCursor)
 
 
-def _generate_unique_username(base_username: str) -> str:
+def _generate_unique_username(base_username: str, cursor) -> str:
     normalized = (base_username or "google_user").strip().lower().replace(" ", "_")
     if not normalized:
         normalized = "google_user"
@@ -32,6 +31,7 @@ def _generate_unique_username(base_username: str) -> str:
             return candidate
         candidate = f"{normalized[:35]}_{suffix}"
         suffix += 1
+
 
 @authorization_blueprint.route("/register", methods=["POST"])
 @swag_from(load_yaml("documentation/authorization.yaml", "register"))
@@ -66,23 +66,27 @@ def register():
         VALUES (%s, %s, %s, %s)
     """
 
-    cursor.execute('SELECT username FROM "user" WHERE username = %s', (username,))
-    if cursor.fetchone():
-        return {"message": "Username already taken"}, 409
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute('SELECT username FROM "user" WHERE username = %s', (username,))
+        if cursor.fetchone():
+            return {"message": "Username already taken"}, 409
 
-    cursor.execute('SELECT email FROM "user" WHERE email = %s', (email,))
-    if cursor.fetchone():
-        return {"message": "This email was already used!"}, 409
+        cursor.execute('SELECT email FROM "user" WHERE email = %s', (email,))
+        if cursor.fetchone():
+            return {"message": "This email was already used!"}, 409
 
-    try:
-        hashed_password = generate_password_hash(password)
-        cursor.execute(create_user_cmd, (username, hashed_password, email))
-        user_id = cursor.fetchone()["id_registration"]
-        cursor.execute(create_user_settings_cmd, (user_id, firstname, surname, birthdate_str))
-        db.commit()
-    except:
-        db.rollback()
-        return {"message": "User already exists!"}, 409
+        try:
+            hashed_password = generate_password_hash(password)
+            cursor.execute(create_user_cmd, (username, hashed_password, email))
+            user_id = cursor.fetchone()["id_registration"]
+            cursor.execute(
+                create_user_settings_cmd,
+                (user_id, firstname, surname, birthdate_str),
+            )
+            db.commit()
+        except:
+            db.rollback()
+            return {"message": "User already exists!"}, 409
 
     access_token = create_access_token(identity=username)
     return {"message": "Success", "token": access_token}, 200
@@ -100,10 +104,14 @@ def login():
             "message": "Invalid login format!"
         }, 400
 
-    cursor.execute('SELECT id_registration, username, password FROM "user" WHERE username = %s', (username,))
-    output = cursor.fetchone()
-    if output is None or not check_password_hash(output["password"], password):
-        return {"message": "Invalid credentials!"}, 401
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute(
+            'SELECT id_registration, username, password FROM "user" WHERE username = %s',
+            (username,),
+        )
+        output = cursor.fetchone()
+        if output is None or not check_password_hash(output["password"], password):
+            return {"message": "Invalid credentials!"}, 401
 
     access_token = create_access_token(identity=username)
     return {"message": "Success", "token": access_token}, 200
@@ -134,42 +142,48 @@ def google_login():
         return {"message": "Invalid Google token!"}, 401
 
     email = payload.get("email")
-    email_verified = payload.get("email_verified") is True
-    if not email or not email_verified:
+    if not email:
+        return {"message": "Google account has no email."}, 401
+
+    # New / first-time Google accounts may omit the claim or send false until
+    # verification completes; blocking caused "works on second try" UX.
+    if payload.get("email_verified") is False:
         return {"message": "Google account email is not verified."}, 401
 
     given_name = payload.get("given_name") or "Google"
     family_name = payload.get("family_name") or "User"
 
     try:
-        cursor.execute(
-            'SELECT id_registration, username FROM "user" WHERE email = %s',
-            (email,),
-        )
-        existing = cursor.fetchone()
-        if existing is None:
-            local_part = email.split("@")[0]
-            username = _generate_unique_username(local_part)
-            random_password = generate_password_hash(uuid.uuid4().hex)
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(
-                """
+                'SELECT id_registration, username FROM "user" WHERE email = %s',
+                (email,),
+            )
+            existing = cursor.fetchone()
+            if existing is None:
+                local_part = email.split("@")[0]
+                username = _generate_unique_username(local_part, cursor)
+                random_password = generate_password_hash(uuid.uuid4().hex)
+                cursor.execute(
+                    """
                 INSERT INTO "user" (username, password, email)
                 VALUES (%s, %s, %s)
                 RETURNING id_registration
                 """,
-                (username, random_password, email),
-            )
-            user_id = cursor.fetchone()["id_registration"]
-            cursor.execute(
-                """
+                    (username, random_password, email),
+                )
+                user_id = cursor.fetchone()["id_registration"]
+                cursor.execute(
+                    """
                 INSERT INTO user_setting (id_user, name, surname, birthdate)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (user_id, given_name, family_name, None),
-            )
-            db.commit()
-        else:
-            username = existing["username"]
+                    (user_id, given_name, family_name, None),
+                )
+                db.commit()
+            else:
+                username = existing["username"]
+                db.commit()
     except Exception:
         db.rollback()
         return {"message": "Failed to create/login Google user."}, 500

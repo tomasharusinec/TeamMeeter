@@ -59,13 +59,25 @@ class _RegisterScreenState extends State<RegisterScreen>
       initialDate: DateTime(2000),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
-      builder: (context, child) {
+      builder: (pickerCtx, child) {
+        final dark = AppColors.isDark(pickerCtx);
         return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF8B1A2C),
-              surface: Color(0xFF1A0F0F),
-              onSurface: Colors.white,
+          data: Theme.of(pickerCtx).copyWith(
+            colorScheme: dark
+                ? const ColorScheme.dark(
+                    primary: Color(0xFF8B1A2C),
+                    surface: Color(0xFF1A0F0F),
+                    onSurface: Colors.white,
+                  )
+                : const ColorScheme.light(
+                    primary: Color(0xFF8B1A2C),
+                    surface: Color(0xFFF2ECEC),
+                    onSurface: Color(0xFF1A1A1A),
+                  ),
+            dialogTheme: DialogThemeData(
+              backgroundColor: dark
+                  ? const Color(0xFF1A0F0F)
+                  : const Color(0xFFF2ECEC),
             ),
           ),
           child: child!,
@@ -262,10 +274,10 @@ class _RegisterScreenState extends State<RegisterScreen>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Text(
+                              Text(
                                 'Already have an account? ',
                                 style: TextStyle(
-                                  color: Colors.white70,
+                                  color: AppColors.textSecondary(context),
                                   fontSize: 13,
                                 ),
                               ),

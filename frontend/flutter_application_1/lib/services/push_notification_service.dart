@@ -1,17 +1,34 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart'
+    show
+        TargetPlatform,
+        debugPrint,
+        defaultTargetPlatform,
+        kDebugMode,
+        kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'api_service.dart';
 
+void _fcmLog(String message, [Object? error, StackTrace? stack]) {
+  if (error != null) {
+    developer.log(message, name: 'TeamMeeterFCM', error: error, stackTrace: stack);
+  } else {
+    developer.log(message, name: 'TeamMeeterFCM');
+  }
+}
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await PushNotificationService.instance.ensureInitialized();
-  // In background, Android/iOS already show notification payload automatically.
-  // Show local notification only for data-only messages.
+  // Samostatný isolate: nevolaj ensureInitialized() (FCM listenery + duplicitný handler).
+  await PushNotificationService.instance.ensureBgIsolateReady();
+  // Na pozadí systém zobrazí správy s FCM „notification“; data-only riešime lokálne.
   if (message.notification == null) {
     await PushNotificationService.instance.showLocalFromRemoteMessage(message);
   }
@@ -35,6 +52,7 @@ class PushNotificationService {
       StreamController<Map<String, dynamic>>.broadcast();
 
   bool _initialized = false;
+  bool _localNotificationsReady = false;
   Map<String, dynamic>? _initialTapData;
   StreamSubscription<String>? _tokenRefreshSubscription;
 
@@ -54,10 +72,16 @@ class PushNotificationService {
     }
   }
 
-  Future<void> ensureInitialized() async {
-    if (_initialized) return;
+  /// Minimálna inicializácia v headless isolate (FCM background); bez onMessage / duplicitného handlera.
+  Future<void> ensureBgIsolateReady() async {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+    await _setupLocalNotifications();
+  }
 
-    await Firebase.initializeApp();
+  Future<void> _setupLocalNotifications() async {
+    if (_localNotificationsReady) return;
 
     const androidSettings = AndroidInitializationSettings('ic_launcher');
     const initializationSettings = InitializationSettings(
@@ -83,19 +107,70 @@ class PushNotificationService {
         >()
         ?.createNotificationChannel(_channel);
 
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    _localNotificationsReady = true;
+  }
 
-    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null && initialMessage.data.isNotEmpty) {
-      _emitTapData(initialMessage.data);
+  Future<void> ensureInitialized() async {
+    if (_initialized) return;
+
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
     }
 
-    FirebaseMessaging.onMessage.listen(showLocalFromRemoteMessage);
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      if (message.data.isNotEmpty) {
-        _emitTapData(message.data);
+    try {
+      await _setupLocalNotifications();
+    } catch (e, st) {
+      _fcmLog('ensureInitialized: flutter_local_notifications zlyhalo', e, st);
+      rethrow;
+    }
+
+    var openedFromLocalNotification = false;
+    try {
+      final details = await _localNotifications.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp ?? false) {
+        final payload = details!.notificationResponse?.payload;
+        if (payload != null && payload.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(payload);
+            if (decoded is Map) {
+              _emitTapData(Map<String, dynamic>.from(decoded));
+              openedFromLocalNotification = true;
+            }
+          } catch (e, st) {
+            _fcmLog('getNotificationAppLaunchDetails: payload', e, st);
+          }
+        }
       }
-    });
+    } catch (e, st) {
+      _fcmLog('getNotificationAppLaunchDetails zlyhalo (ignorujeme)', e, st);
+    }
+
+    try {
+      if (!openedFromLocalNotification) {
+        final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+        if (initialMessage != null && initialMessage.data.isNotEmpty) {
+          _emitTapData(initialMessage.data);
+        }
+      }
+    } catch (e, st) {
+      _fcmLog('ensureInitialized: getInitialMessage zlyhalo (ignorujeme)', e, st);
+    }
+
+    try {
+      FirebaseMessaging.onMessage.listen((RemoteMessage m) {
+        // V popredí Android/iOS často nezobrazia systémovú notifikáciu z FCM „notification“
+        // bloku — musíme ju spracovať lokálne (inak sa nič neukáže).
+        showLocalFromRemoteMessage(m, foreground: true);
+      });
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        if (message.data.isNotEmpty) {
+          _emitTapData(message.data);
+        }
+      });
+    } catch (e, st) {
+      _fcmLog('ensureInitialized: FCM stream listen zlyhal', e, st);
+      rethrow;
+    }
 
     _initialized = true;
   }
@@ -109,18 +184,27 @@ class PushNotificationService {
     );
   }
 
-  Future<void> showLocalFromRemoteMessage(RemoteMessage message) async {
-    // Avoid duplicate alerts when FCM already contains a system notification.
-    if (message.notification != null) {
+  Future<void> showLocalFromRemoteMessage(
+    RemoteMessage message, {
+    bool foreground = false,
+  }) async {
+    // Na pozadí systém sám zobrazí správy s FCM „notification“ — lokálne len data-only.
+    if (!foreground && message.notification != null) {
       return;
     }
 
     final notification = message.notification;
     final type = message.data['notification_type']?.toString();
+    final pushTitle = message.data['push_title']?.toString().trim();
+    final pushBody = message.data['push_body']?.toString().trim();
     final title =
-        notification?.title ?? _titleFromData(type: type, data: message.data);
+        notification?.title ??
+        (pushTitle != null && pushTitle.isNotEmpty ? pushTitle : null) ??
+        _titleFromData(type: type, data: message.data);
     final body =
-        notification?.body ?? _bodyFromData(type: type, data: message.data);
+        notification?.body ??
+        (pushBody != null && pushBody.isNotEmpty ? pushBody : null) ??
+        _bodyFromData(type: type, data: message.data);
 
     // Ignore unknown generic payloads to avoid "notification about notification".
     if (body == null || body.trim().isEmpty) {
@@ -140,6 +224,11 @@ class PushNotificationService {
           icon: 'ic_launcher',
           importance: Importance.high,
           priority: Priority.high,
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
         ),
       ),
       payload: payload,
@@ -271,12 +360,109 @@ class PushNotificationService {
   }
 
   Future<void> syncPushTokenWithBackend(ApiService apiService) async {
-    await ensureInitialized();
-    await requestPermissions();
+    _fcmLog('syncPushTokenWithBackend: start');
+    if (!apiService.hasAuthToken) {
+      _fcmLog('syncPushTokenWithBackend: skip — žiadny JWT (hasAuthToken=false)');
+      return;
+    }
 
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null && token.isNotEmpty) {
+    try {
+      await ensureInitialized();
+    } catch (e, st) {
+      _fcmLog(
+        'syncPushTokenWithBackend: ensureInitialized zlyhalo, skúšam len Firebase.initializeApp',
+        e,
+        st,
+      );
+      try {
+        if (Firebase.apps.isEmpty) {
+          await Firebase.initializeApp();
+        }
+      } catch (e2, st2) {
+        _fcmLog('syncPushTokenWithBackend: ani Firebase.initializeApp neprešlo', e2, st2);
+        return;
+      }
+    }
+
+    try {
+      await FirebaseMessaging.instance.setAutoInitEnabled(true);
+    } catch (e, st) {
+      _fcmLog('setAutoInitEnabled', e, st);
+    }
+
+    try {
+      await requestPermissions();
+    } catch (e, st) {
+      _fcmLog('requestPermission (FCM)', e, st);
+    }
+
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await Permission.notification.request();
+      }
+    } catch (e, st) {
+      _fcmLog('Permission.notification', e, st);
+    }
+
+    if (kIsWeb) {
+      _fcmLog('syncPushTokenWithBackend: skip — web (bez VAPID)');
+      return;
+    }
+
+    try {
+      final supported = await FirebaseMessaging.instance.isSupported();
+      if (!supported) {
+        _fcmLog(
+          'syncPushTokenWithBackend: FirebaseMessaging.isSupported() == false '
+          '($defaultTargetPlatform)',
+        );
+        return;
+      }
+    } catch (e, st) {
+      _fcmLog('isSupported() check', e, st);
+    }
+
+    // Po cold start niekedy getToken() zlyhá skôr, než sa viaže Play služba — krátky odklad.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    String? token;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+      }
+      try {
+        token = await FirebaseMessaging.instance.getToken();
+      } catch (e, st) {
+        _fcmLog('getToken() pokus $attempt', e, st);
+        token = null;
+      }
+      if (token != null && token.isNotEmpty) break;
+    }
+    if (token == null || token.isEmpty) {
+      _fcmLog(
+        'syncPushTokenWithBackend: getToken() prázdne — žiadny POST /notifications/push-token '
+        '($defaultTargetPlatform; na PC desktope FCM často nie je)',
+      );
+      if (kDebugMode) {
+        debugPrint(
+          'TeamMeeter FCM: getToken() prázdny — pozri Logcat filter TeamMeeterFCM',
+        );
+      }
+      return;
+    }
+
+    _fcmLog(
+      'syncPushTokenWithBackend: volám POST /notifications/push-token (FCM token dĺžka ${token.length})',
+    );
+    try {
       await apiService.registerPushToken(token: token, platform: 'flutter');
+      _fcmLog('syncPushTokenWithBackend: push-token OK');
+    } catch (e, st) {
+      _fcmLog('syncPushTokenWithBackend: registerPushToken zlyhal — žiadny zápis do DB', e, st);
+      if (kDebugMode) {
+        debugPrint('TeamMeeter FCM: registerPushToken zlyhal: $e\n$st');
+      }
+      return;
     }
 
     _tokenRefreshSubscription ??= FirebaseMessaging.instance.onTokenRefresh

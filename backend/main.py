@@ -20,6 +20,7 @@ from flasgger import Swagger
 from websocket_handler import sock
 from sync import sync_blueprint
 from datetime import timedelta
+from push_notifications import log_firebase_status_at_startup
 
 app = Flask(__name__)
 CORS(app)
@@ -99,7 +100,12 @@ def _start_expired_cleanup_worker():
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()
 
+
+# Deadline cleanup + push (activity expired) must run even under Gunicorn/uWSGI, not only `python main.py`.
+_start_expired_cleanup_worker()
+
+log_firebase_status_at_startup()
+
 if __name__ == "__main__":
     sync_permissions()
-    _start_expired_cleanup_worker()
     app.run(host="0.0.0.0", port=5000)

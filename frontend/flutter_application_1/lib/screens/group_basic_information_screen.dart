@@ -203,6 +203,7 @@ class _GroupBasicInformationScreenState
       appBar: AppBar(
         title: const Text('Basic information'),
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: AppColors.textPrimary(context),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -215,14 +216,16 @@ class _GroupBasicInformationScreenState
         ),
         child: SafeArea(
           child: _isLoading
-              ? const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
+              ? Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.circularProgressOnBackground(context),
+                  ),
                 )
               : _group == null
-              ? const Center(
+              ? Center(
                   child: Text(
                     'Unable to load group information',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: AppColors.textMuted(context)),
                   ),
                 )
               : Padding(
@@ -240,10 +243,12 @@ class _GroupBasicInformationScreenState
                                   vertical: 16,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF2A1111),
+                                  color: AppColors.surfaceSecondary(context),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
-                                    color: Colors.white.withAlpha(20),
+                                    color: AppColors.listCardBorderMedium(
+                                      context,
+                                    ),
                                   ),
                                 ),
                                 child: Column(
@@ -258,8 +263,8 @@ class _GroupBasicInformationScreenState
                                       _group!.hasIcon
                                           ? 'Group icon'
                                           : 'No icon uploaded yet',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
+                                      style: TextStyle(
+                                        color: AppColors.textMuted(context),
                                         fontSize: 13,
                                       ),
                                     ),
@@ -350,21 +355,23 @@ class _GroupBasicInformationScreenState
                               const SizedBox(height: 18),
                               TextFormField(
                                 controller: _nameController,
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(context),
+                                ),
                                 decoration: InputDecoration(
                                   labelText: 'Group name',
-                                  labelStyle: const TextStyle(
-                                    color: Colors.white70,
+                                  labelStyle: TextStyle(
+                                    color: AppColors.textMuted(context),
                                   ),
                                   filled: true,
-                                  fillColor: const Color(0xFF2A1111),
+                                  fillColor: AppColors.surfaceSecondary(context),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                     borderSide: BorderSide(
-                                      color: Colors.white.withAlpha(26),
+                                      color: AppColors.outlineMuted(context),
                                     ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
@@ -385,21 +392,23 @@ class _GroupBasicInformationScreenState
                               TextFormField(
                                 controller: _capacityController,
                                 keyboardType: TextInputType.number,
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(context),
+                                ),
                                 decoration: InputDecoration(
                                   labelText: 'Group capacity',
-                                  labelStyle: const TextStyle(
-                                    color: Colors.white70,
+                                  labelStyle: TextStyle(
+                                    color: AppColors.textMuted(context),
                                   ),
                                   filled: true,
-                                  fillColor: const Color(0xFF2A1111),
+                                  fillColor: AppColors.surfaceSecondary(context),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(12),
                                     borderSide: BorderSide(
-                                      color: Colors.white.withAlpha(26),
+                                      color: AppColors.outlineMuted(context),
                                     ),
                                   ),
                                   focusedBorder: OutlineInputBorder(
@@ -477,16 +486,18 @@ class _InfoTile extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A1111),
+        color: AppColors.surfaceSecondary(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withAlpha(20)),
+        border: Border.all(
+          color: AppColors.listCardBorderMedium(context),
+        ),
       ),
       child: Row(
         children: [
           Text(
             '$label:',
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: AppColors.textMuted(context),
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -496,8 +507,8 @@ class _InfoTile extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: AppColors.textPrimary(context),
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -535,9 +546,9 @@ class _GroupIconPreview extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A0A0A),
+                color: AppColors.dialogBackground(context),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withAlpha(26)),
+                border: Border.all(color: AppColors.outlineMuted(context)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -556,24 +567,24 @@ class _GroupIconPreview extends StatelessWidget {
                             imageUrl,
                             fit: BoxFit.contain,
                             headers: {'Authorization': 'Bearer $token'},
-                            errorBuilder: (_, __, ___) => const SizedBox(
+                            errorBuilder: (_, __, ___) => SizedBox(
                               height: 220,
                               child: Center(
                                 child: Icon(
                                   Icons.groups_rounded,
-                                  color: Colors.white70,
+                                  color: AppColors.textMuted(context),
                                   size: 72,
                                 ),
                               ),
                             ),
                           );
                         }
-                        return const SizedBox(
+                        return SizedBox(
                           height: 220,
                           child: Center(
                             child: Icon(
                               Icons.groups_rounded,
-                              color: Colors.white70,
+                              color: AppColors.textMuted(context),
                               size: 72,
                             ),
                           ),
@@ -597,8 +608,11 @@ class _GroupIconPreview extends StatelessWidget {
         height: 82,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: const Color(0xFF1A0A0A),
-          border: Border.all(color: Colors.white.withAlpha(70), width: 1.4),
+          color: AppColors.avatarPlaceholderBackground(context),
+          border: Border.all(
+            color: AppColors.outlineStrong(context),
+            width: 1.4,
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: FutureBuilder(
@@ -613,16 +627,16 @@ class _GroupIconPreview extends StatelessWidget {
                 imageUrl,
                 fit: BoxFit.cover,
                 headers: {'Authorization': 'Bearer $token'},
-                errorBuilder: (_, __, ___) => const Icon(
+                errorBuilder: (_, __, ___) => Icon(
                   Icons.groups_rounded,
-                  color: Colors.white70,
+                  color: AppColors.textMuted(context),
                   size: 34,
                 ),
               );
             }
-            return const Icon(
+            return Icon(
               Icons.groups_rounded,
-              color: Colors.white70,
+              color: AppColors.textMuted(context),
               size: 34,
             );
           },

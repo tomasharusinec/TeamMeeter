@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../theme/app_colors.dart';
 import '../services/api_service.dart';
 import '../services/teammeeter_analytics.dart';
 import '../utils/snackbar_utils.dart';
@@ -38,10 +39,10 @@ class ConversationsScreenState extends State<ConversationsScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1A0A0A),
-        title: const Text(
+        backgroundColor: AppColors.dialogBackground(dialogContext),
+        title: Text(
           'Nový chat',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.textPrimary(dialogContext)),
         ),
         content: Form(
           key: formKey,
@@ -50,10 +51,16 @@ class ConversationsScreenState extends State<ConversationsScreen> {
             children: [
               TextFormField(
                 controller: nameController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
+                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
+                decoration: InputDecoration(
                   labelText: 'Názov chatu',
                   hintText: 'napr. Projekt tím',
+                  labelStyle: TextStyle(
+                    color: AppColors.textMuted(dialogContext),
+                  ),
+                  hintStyle: TextStyle(
+                    color: AppColors.textDisabled(dialogContext),
+                  ),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -65,10 +72,16 @@ class ConversationsScreenState extends State<ConversationsScreen> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: participantUsernamesController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
+                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
+                decoration: InputDecoration(
                   labelText: 'Usernames účastníkov',
                   hintText: 'napr. jano, eva, tomas',
+                  labelStyle: TextStyle(
+                    color: AppColors.textMuted(dialogContext),
+                  ),
+                  hintStyle: TextStyle(
+                    color: AppColors.textDisabled(dialogContext),
+                  ),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -82,9 +95,12 @@ class ConversationsScreenState extends State<ConversationsScreen> {
                 },
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Použi usernames oddelené čiarkou.',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+                style: TextStyle(
+                  color: AppColors.textSecondary(dialogContext),
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -95,6 +111,10 @@ class ConversationsScreenState extends State<ConversationsScreen> {
             child: const Text('Zrušiť'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B1A2C),
+              foregroundColor: Colors.white,
+            ),
             onPressed: _isCreatingConversation
                 ? null
                 : () async {
@@ -144,12 +164,12 @@ class ConversationsScreenState extends State<ConversationsScreen> {
                     }
                   },
             child: _isCreatingConversation
-                ? const SizedBox(
+                ? SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: Theme.of(dialogContext).colorScheme.onPrimary,
                     ),
                   )
                 : const Text('Vytvoriť'),
@@ -212,12 +232,20 @@ class ConversationsScreenState extends State<ConversationsScreen> {
     if (conversationId == null) return;
     final selectedAction = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF1A0A0A),
-      builder: (_) => SafeArea(
-        child: ListTile(
-          leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-          title: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
-          onTap: () => Navigator.of(context).pop('delete'),
+      backgroundColor: AppColors.bottomSheetBackground(context),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              title: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+              onTap: () => Navigator.of(sheetContext).pop('delete'),
+            ),
+          ],
         ),
       ),
     );
@@ -225,15 +253,19 @@ class ConversationsScreenState extends State<ConversationsScreen> {
 
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      await api.deleteConversation(conversationId);
+      final deletedOnServer = await api.deleteConversation(conversationId);
       if (!mounted) return;
       setState(() {
         _conversations.removeWhere((c) => c['id'] == conversationId);
       });
       context.showLatestSnackBar(
-        const SnackBar(
-          content: Text('Konverzácia bola zmazaná'),
-          backgroundColor: Color(0xFF8B1A2C),
+        SnackBar(
+          content: Text(
+            deletedOnServer
+                ? 'Konverzácia bola zmazaná'
+                : 'Konverzácia odstránená lokálne. Po pripojení sa dokončí vymazanie na serveri.',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
     } catch (e) {
@@ -250,7 +282,11 @@ class ConversationsScreenState extends State<ConversationsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
+      return Center(
+        child: CircularProgressIndicator(
+          color: AppColors.circularProgressOnBackground(context),
+        ),
+      );
     }
     if (_conversations.isEmpty) {
       return Stack(
@@ -260,14 +296,18 @@ class ConversationsScreenState extends State<ConversationsScreen> {
                 _loadConversations(showLoadingIndicator: false),
             child: ListView(
               padding: const EdgeInsets.all(20),
-              children: const [
-                SizedBox(height: 140),
-                Icon(Icons.chat_bubble_outline, color: Colors.white54, size: 58),
-                SizedBox(height: 16),
+              children: [
+                const SizedBox(height: 140),
+                Icon(
+                  Icons.chat_bubble_outline,
+                  color: AppColors.textDisabled(context),
+                  size: 58,
+                ),
+                const SizedBox(height: 16),
                 Text(
                   'Zatiaľ nemáš žiadne konverzácie',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white60),
+                  style: TextStyle(color: AppColors.textMuted(context)),
                 ),
               ],
             ),
@@ -305,9 +345,11 @@ class ConversationsScreenState extends State<ConversationsScreen> {
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A0A0A).withAlpha(204),
+                  color: AppColors.listCardBackground(context),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withAlpha(16)),
+                  border: Border.all(
+                    color: AppColors.listCardBorder(context),
+                  ),
                 ),
                 child: ListTile(
                   leading: const CircleAvatar(
@@ -316,13 +358,19 @@ class ConversationsScreenState extends State<ConversationsScreen> {
                   ),
                   title: Text(
                     name,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.textPrimary(context)),
                   ),
                   subtitle: Text(
                     'ID: ${conversationId ?? '-'}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    style: TextStyle(
+                      color: AppColors.textSecondary(context),
+                      fontSize: 12,
+                    ),
                   ),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textDisabled(context),
+                  ),
                   onLongPress: () => _showConversationActions(conversation),
                   onTap: conversationId == null
                       ? null
@@ -370,13 +418,17 @@ class ConversationsScreenState extends State<ConversationsScreen> {
 class ChatScreen extends StatefulWidget {
   final int conversationId;
   final String title;
-  /// Napr. obnovenie zoznamu konverzácií po pridaní účastníka.
+  /// Ak ide o chat skupiny, nastav [groupId] — umožní mazanie cudzích správ pri oprávnení
+  /// `delete_messages` / Manager (vrátane offline fronty rovnakým endpointom ako DM).
+  final int? groupId;
+  /// Obnovenie zoznamu / detailu po pridaní účastníka do chatu.
   final VoidCallback? onConversationMetadataChanged;
 
   const ChatScreen({
     super.key,
     required this.conversationId,
     required this.title,
+    this.groupId,
     this.onConversationMetadataChanged,
   });
 
@@ -400,6 +452,8 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _participants = [];
   Map<String, dynamic>? _replyingTo;
+  /// Skupinový chat: mazanie správ iných ako vlastné (Manager alebo oprávnenie delete_messages).
+  bool _canDeleteOthersGroupMessages = false;
 
   @override
   void initState() {
@@ -418,16 +472,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _initializeChat() async {
+    if (widget.groupId != null) {
+      unawaited(_loadGroupMessageDeleteCapability());
+    }
     await _loadMessages();
     await _loadParticipants();
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     await api.syncPendingChatOperations();
-    await _loadMessages();
+    await _loadMessages(showBlockingLoader: false);
     await _connectSocket();
   }
 
-  Future<void> _loadMessages() async {
-    if (mounted) setState(() => _isLoading = true);
+  Future<void> _loadMessages({bool showBlockingLoader = true}) async {
+    if (showBlockingLoader && mounted) setState(() => _isLoading = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final messages = await api.getConversationMessages(widget.conversationId);
@@ -437,7 +494,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await api.saveConversationMessagesToCache(widget.conversationId, merged);
       _scrollToBottom();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !showBlockingLoader) return;
       context.showLatestSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll('Exception: ', '')),
@@ -445,7 +502,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (showBlockingLoader && mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -459,6 +516,52 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => _participants = participants);
     } catch (_) {
       // Keep chat functional even if participant list fails.
+    }
+  }
+
+  Future<void> _loadGroupMessageDeleteCapability() async {
+    final gid = widget.groupId;
+    if (gid == null) return;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final uid = auth.user?.idRegistration;
+    if (uid == null) return;
+    try {
+      final api = auth.apiService;
+      final userRoles = await api.getUserRolesInGroup(groupId: gid, userId: uid);
+      if (userRoles.any(
+        (r) => (r['name']?.toString() ?? '') == 'Manager',
+      )) {
+        if (mounted) setState(() => _canDeleteOthersGroupMessages = true);
+        return;
+      }
+      final groupRoles = await api.getGroupRoles(gid);
+      final userRoleIds = userRoles
+          .map((r) => r['id_role'])
+          .whereType<num>()
+          .map((n) => n.toInt())
+          .toSet();
+      var can = false;
+      for (final r in groupRoles) {
+        final rid = r['id_role'];
+        final id = rid is int ? rid : (rid is num ? rid.toInt() : null);
+        if (id == null || !userRoleIds.contains(id)) continue;
+        final name = (r['name'] ?? '').toString();
+        if (name == 'Manager') {
+          can = true;
+          break;
+        }
+        final perms = r['permissions'];
+        final list = perms is List
+            ? perms.map((e) => e.toString()).toList()
+            : <String>[];
+        if (list.contains('delete_messages')) {
+          can = true;
+          break;
+        }
+      }
+      if (mounted) setState(() => _canDeleteOthersGroupMessages = can);
+    } catch (_) {
+      // Offline / chyba API — ostane len mazanie vlastných správ.
     }
   }
 
@@ -548,9 +651,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
         if (_isSyncingPendingChatOps) return;
         _isSyncingPendingChatOps = true;
+        final hadLocalPending =
+            _messages.any((m) => m['is_local_pending'] == true);
         final syncedAny = await api.syncPendingChatOperations();
-        if (syncedAny && mounted) {
-          await _loadMessages();
+        // Frontu môže vyčistiť aj sync z iného miesta (napr. getGroups); vtedy
+        // syncedAny je false ale lokálne pending ešte treba zlúčiť so serverom.
+        if (mounted && (syncedAny || hadLocalPending)) {
+          await _loadMessages(showBlockingLoader: false);
+          if (widget.groupId != null) {
+            unawaited(_loadGroupMessageDeleteCapability());
+          }
         }
       } catch (_) {
         // Keep trying on next tick without breaking chat UI.
@@ -565,20 +675,28 @@ class _ChatScreenState extends State<ChatScreen> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1A0A0A),
-        title: const Text('Pridať účastníka', style: TextStyle(color: Colors.white)),
+        backgroundColor: AppColors.dialogBackground(dialogContext),
+        title: Text(
+          'Pridať účastníka',
+          style: TextStyle(color: AppColors.textPrimary(dialogContext)),
+        ),
         content: TextField(
           controller: usernameController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
+          style: TextStyle(color: AppColors.textPrimary(dialogContext)),
+          decoration: InputDecoration(
             labelText: 'Username',
             hintText: 'napr. janko123',
+            labelStyle: TextStyle(color: AppColors.textMuted(dialogContext)),
+            hintStyle: TextStyle(color: AppColors.textDisabled(dialogContext)),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Zrušiť'),
+            child: Text(
+              'Zrušiť',
+              style: TextStyle(color: AppColors.textSecondary(dialogContext)),
+            ),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -613,6 +731,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 );
               }
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF8B1A2C),
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Pridať'),
           ),
         ],
@@ -971,12 +1093,16 @@ class _ChatScreenState extends State<ChatScreen> {
                   errorBuilder: (_, __, ___) => Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A0A0A),
+                      color: AppColors.imagePreviewErrorBackground(
+                        dialogContext,
+                      ),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Nepodarilo sa načítať obrázok',
-                      style: TextStyle(color: Colors.white70),
+                      style: TextStyle(
+                        color: AppColors.textMuted(dialogContext),
+                      ),
                     ),
                   ),
                 ),
@@ -1051,24 +1177,31 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final selectedAction = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF1A0A0A),
-      builder: (_) => SafeArea(
+      backgroundColor: AppColors.bottomSheetBackground(context),
+      builder: (sheetCtx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.reply, color: Colors.white),
-              title: const Text('Reply', style: TextStyle(color: Colors.white)),
-              onTap: () => Navigator.of(context).pop('reply'),
+              leading: Icon(
+                Icons.reply,
+                color: AppColors.textPrimary(sheetCtx),
+              ),
+              title: Text(
+                'Reply',
+                style: TextStyle(color: AppColors.textPrimary(sheetCtx)),
+              ),
+              onTap: () => Navigator.of(sheetCtx).pop('reply'),
             ),
-            if (isMine)
+            if (isMine ||
+                (widget.groupId != null && _canDeleteOthersGroupMessages))
               ListTile(
                 leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 title: const Text(
                   'Delete',
                   style: TextStyle(color: Colors.redAccent),
                 ),
-                onTap: () => Navigator.of(context).pop('delete'),
+                onTap: () => Navigator.of(sheetCtx).pop('delete'),
               ),
           ],
         ),
@@ -1090,7 +1223,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      await api.deleteConversationMessage(
+      final deletedOnServer = await api.deleteConversationMessage(
         conversationId: widget.conversationId,
         messageId: (messageId as num).toInt(),
       );
@@ -1100,6 +1233,14 @@ class _ChatScreenState extends State<ChatScreen> {
         if (_replyingTo?['id'] == messageId) _replyingTo = null;
       });
       await api.saveConversationMessagesToCache(widget.conversationId, _messages);
+      if (!deletedOnServer && mounted) {
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text('Offline: zmazanie sa dokončí po pripojení'),
+            backgroundColor: Color(0xFFEF6C00),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       context.showLatestSnackBar(
@@ -1137,6 +1278,17 @@ class _ChatScreenState extends State<ChatScreen> {
         ? Colors.white70
         : const Color(0xFF666666);
     final inputBg = isDarkMode ? const Color(0xFF2A1111) : Colors.white;
+    final bubbleBorderColor = AppColors.bubbleOutline(context);
+    final fileChipBg = AppColors.bubbleFileChipBackground(context);
+    final fileChipBorder = AppColors.bubbleFileChipBorder(context);
+    final fileChipFg = AppColors.bubbleFileChipForeground(context);
+    final replyBarBg = AppColors.replyPreviewBackground(context);
+    final composerBg = AppColors.composerBarBackground(context);
+    final inputBorderSide = BorderSide(
+      color: isDarkMode
+          ? Colors.white.withAlpha(16)
+          : const Color(0xFF000000).withAlpha(14),
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
@@ -1153,24 +1305,24 @@ class _ChatScreenState extends State<ChatScreen> {
               if (!mounted) return;
               showModalBottomSheet(
                 context: context,
-                backgroundColor: const Color(0xFF1A0A0A),
-                builder: (_) => SafeArea(
+                backgroundColor: AppColors.bottomSheetBackground(context),
+                builder: (sheetCtx) => SafeArea(
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
-                      const Text(
+                      Text(
                         'Účastníci',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimary(sheetCtx),
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 10),
                       if (_participants.isEmpty)
-                        const Text(
+                        Text(
                           'Nie sú dostupní žiadni účastníci',
-                          style: TextStyle(color: Colors.white60),
+                          style: TextStyle(color: AppColors.textMuted(sheetCtx)),
                         ),
                       for (final participant in _participants)
                         ListTile(
@@ -1179,11 +1331,11 @@ class _ChatScreenState extends State<ChatScreen> {
                           title: Text(
                             participant['username']?.toString() ??
                                 'user #${participant['id_registration'] ?? '?'}',
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: AppColors.textPrimary(sheetCtx)),
                           ),
                           subtitle: Text(
                             'ID: ${participant['id_registration'] ?? '-'}',
-                            style: const TextStyle(color: Colors.white60),
+                            style: TextStyle(color: AppColors.textMuted(sheetCtx)),
                           ),
                         ),
                     ],
@@ -1209,8 +1361,10 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Expanded(
               child: _isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.circularProgressOnBackground(context),
+                      ),
                     )
                   : ListView.builder(
                       controller: _scrollController,
@@ -1240,7 +1394,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   : otherBubbleBg,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: Colors.white.withAlpha(18),
+                                color: bubbleBorderColor,
                               ),
                             ),
                             child: Column(
@@ -1353,15 +1507,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                                       vertical: 8,
                                                     ),
                                                 decoration: BoxDecoration(
-                                                  color: Colors.black.withAlpha(
-                                                    28,
-                                                  ),
+                                                  color: fileChipBg,
                                                   borderRadius:
                                                       BorderRadius.circular(8),
                                                   border: Border.all(
-                                                    color: Colors.white.withAlpha(
-                                                      20,
-                                                    ),
+                                                    color: fileChipBorder,
                                                   ),
                                                 ),
                                                 child: Row(
@@ -1373,7 +1523,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                                         fileExtension,
                                                       ),
                                                       size: 18,
-                                                      color: Colors.white70,
+                                                      color: fileChipFg,
                                                     ),
                                                     const SizedBox(width: 6),
                                                     Text(
@@ -1383,8 +1533,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                                           ? 'FILE'
                                                           : fileExtension
                                                                 .toUpperCase(),
-                                                      style: const TextStyle(
-                                                        color: Colors.white70,
+                                                      style: TextStyle(
+                                                        color: fileChipFg,
                                                         fontSize: 11,
                                                         fontWeight:
                                                             FontWeight.w600,
@@ -1401,10 +1551,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                                   : null,
                                               child: Row(
                                                 children: [
-                                                  const Icon(
+                                                  Icon(
                                                     Icons.download_rounded,
                                                     size: 14,
-                                                    color: Colors.white70,
+                                                    color: fileChipFg,
                                                   ),
                                                   const SizedBox(width: 4),
                                                   Expanded(
@@ -1413,8 +1563,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                                       maxLines: 2,
                                                       overflow:
                                                           TextOverflow.ellipsis,
-                                                      style: const TextStyle(
-                                                        color: Colors.white70,
+                                                      style: TextStyle(
+                                                        color: fileChipFg,
                                                         fontSize: 12,
                                                         decoration:
                                                             TextDecoration
@@ -1442,7 +1592,7 @@ class _ChatScreenState extends State<ChatScreen> {
               top: false,
               child: Container(
                 padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                color: Colors.black.withAlpha(18),
+                color: composerBg,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1455,7 +1605,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2A1111),
+                          color: replyBarBg,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
@@ -1466,18 +1616,18 @@ class _ChatScreenState extends State<ChatScreen> {
                                 '${(_replyingTo!['text'] ?? '').toString()}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white70,
+                                style: TextStyle(
+                                  color: secondaryTextColor,
                                   fontSize: 12,
                                 ),
                               ),
                             ),
                             IconButton(
                               onPressed: () => setState(() => _replyingTo = null),
-                              icon: const Icon(
+                              icon: Icon(
                                 Icons.close,
                                 size: 16,
-                                color: Colors.white70,
+                                color: secondaryTextColor,
                               ),
                             ),
                           ],
@@ -1488,12 +1638,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         IconButton(
                           onPressed: _isUploadingFile ? null : _sendFile,
                           icon: _isUploadingFile
-                              ? const SizedBox(
+                              ? SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: Colors.white,
+                                    color: isDarkMode
+                                        ? Colors.white
+                                        : const Color(0xFF8B1A2C),
                                   ),
                                 )
                               : Icon(Icons.attach_file, color: secondaryTextColor),
@@ -1511,15 +1663,11 @@ class _ChatScreenState extends State<ChatScreen> {
                               fillColor: inputBg,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.white.withAlpha(16),
-                                ),
+                                borderSide: inputBorderSide,
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide(
-                                  color: Colors.white.withAlpha(16),
-                                ),
+                                borderSide: inputBorderSide,
                               ),
                             ),
                           ),

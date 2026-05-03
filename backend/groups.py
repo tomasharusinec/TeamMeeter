@@ -9,7 +9,7 @@ from helper_func import get_current_user_id, db, is_group_member, check_permissi
 from notifications import create_membership_request_notification
 
 groups_blueprint = Blueprint('groups', __name__)
-cursor = db.cursor(cursor_factory=RealDictCursor)
+
 
 @groups_blueprint.route('/', methods=['POST'])
 @swag_from(load_yaml("documentation/groups.yaml", "create_group"))
@@ -99,13 +99,14 @@ def get_groups():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
 
-    cursor.execute("""
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
                    SELECT g.id_group, g.name, g.capacity, g.create_date, (g.icon IS NOT NULL) as has_icon
                    FROM "group" g
                    JOIN group_member gm ON g.id_group = gm.group_id
                    WHERE gm.user_id = %s
                    """, (current_user_id,))
-    groups = cursor.fetchall()
+        groups = cursor.fetchall()
     return {
         "message": "Success",
         "groups": groups
@@ -125,12 +126,13 @@ def get_group(group_id):
             "message": "You are not a member of this group!"
         }, 403
 
-    cursor.execute("""
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
                    SELECT id_group, name, capacity, create_date, (icon IS NOT NULL) as has_icon, conversation_id, qr_code
                    FROM "group"
                    WHERE id_group = %s
                    """, (group_id,))
-    group = cursor.fetchone()
+        group = cursor.fetchone()
     if group is None:
         return {
             "message": "Group not found!"
@@ -181,18 +183,19 @@ def update_group(group_id):
             }, 400
 
     try:
-        cursor.execute("""
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
                        UPDATE "group"
                        SET name = COALESCE(%s, name),
                            capacity = COALESCE(%s, capacity)
                        WHERE id_group = %s RETURNING conversation_id
                        """, (name, capacity, group_id))
 
-        updated_group = cursor.fetchone()
+            updated_group = cursor.fetchone()
 
-        # Ak sa zmenilo meno skupiny, synchronizujeme aj meno konverzÃ¡cie
-        if name and updated_group and updated_group["conversation_id"]:
-            cursor.execute("""
+            # Ak sa zmenilo meno skupiny, synchronizujeme aj meno konverzácie
+            if name and updated_group and updated_group["conversation_id"]:
+                cursor.execute("""
                            UPDATE conversation
                            SET name = %s
                            WHERE id = %s
@@ -230,15 +233,16 @@ def delete_group(group_id):
         }, 403
 
     try:
-        cursor.execute('SELECT conversation_id FROM "group" WHERE id_group = %s', (group_id,))
-        conv_data = cursor.fetchone()
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute('SELECT conversation_id FROM "group" WHERE id_group = %s', (group_id,))
+            conv_data = cursor.fetchone()
 
-        cursor.execute('DELETE FROM "group" WHERE id_group = %s', (group_id,))
+            cursor.execute('DELETE FROM "group" WHERE id_group = %s', (group_id,))
 
-        if conv_data and conv_data["conversation_id"]:
-            conv_id = conv_data["conversation_id"]
-            cursor.execute('DELETE FROM participant WHERE conversation_id = %s', (conv_id,))
-            cursor.execute('DELETE FROM conversation WHERE id = %s', (conv_id,))
+            if conv_data and conv_data["conversation_id"]:
+                conv_id = conv_data["conversation_id"]
+                cursor.execute('DELETE FROM participant WHERE conversation_id = %s', (conv_id,))
+                cursor.execute('DELETE FROM conversation WHERE id = %s', (conv_id,))
 
         db.commit()
     except:
@@ -265,7 +269,8 @@ def get_group_members(group_id):
             "message": "You are not a member of this group!"
         }, 403
 
-    cursor.execute("""
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
                    SELECT u.id_registration,
                           u.username,
                           u.email,
@@ -277,7 +282,7 @@ def get_group_members(group_id):
                             JOIN user_setting us ON u.id_registration = us.id_user
                    WHERE gm.group_id = %s
                    """, (group_id,))
-    members = cursor.fetchall()
+        members = cursor.fetchall()
     return {
         "message": "Success",
         "members": members
@@ -310,67 +315,68 @@ def add_group_member(group_id):
             "message": "Invalid format!"
         }, 400
 
-    cursor.execute("""SELECT id_registration
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""SELECT id_registration
                       FROM "user"
                       WHERE username = %s""", (username,))
-    result = cursor.fetchone()
+        result = cursor.fetchone()
 
-    if not result:
-        return {
-            "message": "User not found!"
-        }, 404
+        if not result:
+            return {
+                "message": "User not found!"
+            }, 404
 
-    user_id = result["id_registration"]
-    cursor.execute('SELECT id_registration FROM "user" WHERE id_registration = %s', (user_id,))
-    if cursor.fetchone() is None:
-        return {
-            "message": "User not found!"
-        }, 404
+        user_id = result["id_registration"]
+        cursor.execute('SELECT id_registration FROM "user" WHERE id_registration = %s', (user_id,))
+        if cursor.fetchone() is None:
+            return {
+                "message": "User not found!"
+            }, 404
 
-    if is_group_member(user_id, group_id):
-        return {
-            "message": "User is already a member of this group!"
-        }, 400
+        if is_group_member(user_id, group_id):
+            return {
+                "message": "User is already a member of this group!"
+            }, 400
 
-    cursor.execute("""
+        cursor.execute("""
                     SELECT capacity
                     FROM "group"
                     WHERE id_group = %s
                    """, (group_id,))
-    group_result = cursor.fetchone()
-    if group_result is None:
-        return {
-            "message": "Group not found!"
-        }, 404
+        group_result = cursor.fetchone()
+        if group_result is None:
+            return {
+                "message": "Group not found!"
+            }, 404
 
-    cursor.execute("""
+        cursor.execute("""
                     SELECT COUNT(*) AS member_count
                     FROM group_member
                     WHERE group_id = %s
                    """, (group_id,))
-    member_count = cursor.fetchone()["member_count"]
-    if member_count >= group_result["capacity"]:
-        return {
-            "message": "Group has reached its capacity!"
-        }, 400
+        member_count = cursor.fetchone()["member_count"]
+        if member_count >= group_result["capacity"]:
+            return {
+                "message": "Group has reached its capacity!"
+            }, 400
 
-    try:
-        cursor.execute(
-            'SELECT username FROM "user" WHERE id_registration = %s',
-            (current_user_id,),
-        )
-        requester = cursor.fetchone()
-        requester_username = requester["username"] if requester else "unknown"
+        try:
+            cursor.execute(
+                'SELECT username FROM "user" WHERE id_registration = %s',
+                (current_user_id,),
+            )
+            requester = cursor.fetchone()
+            requester_username = requester["username"] if requester else "unknown"
 
-        cursor.execute(
-            'SELECT 1 FROM "group" WHERE id_group = %s',
-            (group_id,),
-        )
-        if cursor.fetchone() is None:
-            return {"message": "Group not found!"}, 404
+            cursor.execute(
+                'SELECT 1 FROM "group" WHERE id_group = %s',
+                (group_id,),
+            )
+            if cursor.fetchone() is None:
+                return {"message": "Group not found!"}, 404
 
-        cursor.execute(
-            """
+            cursor.execute(
+                """
             SELECT 1
             FROM membership_request_notification mrn
             JOIN user_notification un ON mrn.notification_id = un.notification_id
@@ -379,25 +385,25 @@ def add_group_member(group_id):
               AND mrn.target_id = %s
               AND mrn.status = 'pending'
             """,
-            (user_id, group_id),
-        )
-        if cursor.fetchone() is not None:
-            return {"message": "Pending group invitation already exists!"}, 409
+                (user_id, group_id),
+            )
+            if cursor.fetchone() is not None:
+                return {"message": "Pending group invitation already exists!"}, 409
 
-        create_membership_request_notification(
-            recipient_user_id=user_id,
-            requester_user_id=current_user_id,
-            requester_username=requester_username,
-            target_type="group",
-            target_id=group_id,
-            target_name=f"Group #{group_id}",
-        )
-    except Exception as e:
-        print(e)
-        db.rollback()
-        return {
-            "message": "Failed to create group invitation!"
-        }, 500
+            create_membership_request_notification(
+                recipient_user_id=user_id,
+                requester_user_id=current_user_id,
+                requester_username=requester_username,
+                target_type="group",
+                target_id=group_id,
+                target_name=f"Group #{group_id}",
+            )
+        except Exception as e:
+            print(e)
+            db.rollback()
+            return {
+                "message": "Failed to create group invitation!"
+            }, 500
 
     return {
         "message": "Invitation sent successfully. User must accept it."
@@ -417,71 +423,72 @@ def join_group():
     if not invite_code:
         return {"message": "Invite code is required!"}, 400
 
-    cursor.execute("""
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
                     SELECT id_group, capacity, conversation_id
                     FROM "group"
                     WHERE qr_code = %s
                    """, (invite_code,))
-    group = cursor.fetchone()
-    if group is None:
-        return {"message": "Invalid invite code!"}, 404
+        group = cursor.fetchone()
+        if group is None:
+            return {"message": "Invalid invite code!"}, 404
 
-    group_id = group["id_group"]
-    if is_group_member(current_user_id, group_id):
-        return {"message": "You are already a member of this group!"}, 400
+        group_id = group["id_group"]
+        if is_group_member(current_user_id, group_id):
+            return {"message": "You are already a member of this group!"}, 400
 
-    cursor.execute("""
+        cursor.execute("""
                     SELECT COUNT(*) AS member_count
                     FROM group_member
                     WHERE group_id = %s
                    """, (group_id,))
-    member_count = cursor.fetchone()["member_count"]
-    if member_count >= group["capacity"]:
-        return {"message": "Group has reached its capacity!"}, 400
+        member_count = cursor.fetchone()["member_count"]
+        if member_count >= group["capacity"]:
+            return {"message": "Group has reached its capacity!"}, 400
 
-    try:
-        cursor.execute("""
+        try:
+            cursor.execute("""
                         INSERT INTO group_member (group_id, user_id)
                         VALUES (%s, %s)
                        """, (group_id, current_user_id))
 
-        cursor.execute("""
+            cursor.execute("""
                         SELECT id_role
                         FROM role
                         WHERE group_id = %s AND name = %s
                        """, (group_id, 'Member'))
-        role_result = cursor.fetchone()
+            role_result = cursor.fetchone()
 
-        if role_result:
-            role_id = role_result["id_role"]
-        else:
-            cursor.execute("""
+            if role_result:
+                role_id = role_result["id_role"]
+            else:
+                cursor.execute("""
                             INSERT INTO role (group_id, name, color)
                             VALUES (%s, %s, %s)
                             RETURNING id_role
                            """, (group_id, 'Member', '#808080'))
-            role_id = cursor.fetchone()["id_role"]
-            cursor.execute("""
+                role_id = cursor.fetchone()["id_role"]
+                cursor.execute("""
                             INSERT INTO role_permission (role_id, permission_id, value)
                             SELECT %s, id_permission, FALSE
                             FROM permission
                            """, (role_id,))
 
-        cursor.execute("""
+            cursor.execute("""
                         INSERT INTO user_role (user_id, role_id)
                         VALUES (%s, %s)
                        """, (current_user_id, role_id))
 
-        if group["conversation_id"]:
-            cursor.execute("""
+            if group["conversation_id"]:
+                cursor.execute("""
                             INSERT INTO participant (conversation_id, user_id)
                             VALUES (%s, %s)
                            """, (group["conversation_id"], current_user_id))
 
-        db.commit()
-    except Exception:
-        db.rollback()
-        return {"message": "Failed to join group!"}, 500
+            db.commit()
+        except Exception:
+            db.rollback()
+            return {"message": "Failed to join group!"}, 500
 
     return {"message": "Joined group successfully"}, 200
 
@@ -494,12 +501,13 @@ def get_group_invite(group_id):
     if not is_group_member(current_user_id, group_id):
         return {"message": "You are not a member of this group!"}, 403
 
-    cursor.execute("""
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
                     SELECT qr_code
                     FROM "group"
                     WHERE id_group = %s
                    """, (group_id,))
-    result = cursor.fetchone()
+        result = cursor.fetchone()
     if result is None:
         return {"message": "Group not found!"}, 404
 
@@ -520,27 +528,28 @@ def enable_group_invite(group_id):
     if not check_permission(current_user_id, group_id, "manage_group"):
         return {"message": "You don't have permission to manage this group!"}, 403
 
-    cursor.execute("""
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
                     SELECT qr_code
                     FROM "group"
                     WHERE id_group = %s
                    """, (group_id,))
-    result = cursor.fetchone()
-    if result is None:
-        return {"message": "Group not found!"}, 404
+        result = cursor.fetchone()
+        if result is None:
+            return {"message": "Group not found!"}, 404
 
-    qr_code = result["qr_code"] or str(uuid.uuid4())
+        qr_code = result["qr_code"] or str(uuid.uuid4())
 
-    try:
-        cursor.execute("""
+        try:
+            cursor.execute("""
                         UPDATE "group"
                         SET qr_code = %s
                         WHERE id_group = %s
                        """, (qr_code, group_id))
-        db.commit()
-    except Exception:
-        db.rollback()
-        return {"message": "Failed to enable invite QR code!"}, 500
+            db.commit()
+        except Exception:
+            db.rollback()
+            return {"message": "Failed to enable invite QR code!"}, 500
 
     return {
         "message": "Invite QR code enabled successfully",
@@ -560,7 +569,8 @@ def disable_group_invite(group_id):
         return {"message": "You don't have permission to manage this group!"}, 403
 
     try:
-        cursor.execute("""
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
                         UPDATE "group"
                         SET qr_code = NULL
                         WHERE id_group = %s
@@ -593,24 +603,25 @@ def remove_group_member(group_id, user_id):
         }, 403
 
     try:
-        cursor.execute("""
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
                         DELETE FROM user_role 
                         WHERE user_id = %s
                           AND role_id IN (
                               SELECT id_role FROM role WHERE group_id = %s
                           )
                         """, (user_id, group_id))
-        cursor.execute("""
+            cursor.execute("""
                        DELETE
                        FROM group_member
                        WHERE group_id = %s
                          AND user_id = %s
                        """, (group_id, user_id))
 
-        cursor.execute('SELECT conversation_id FROM "group" WHERE id_group = %s', (group_id,))
-        conv_data = cursor.fetchone()
-        if conv_data and conv_data["conversation_id"]:
-            cursor.execute("""
+            cursor.execute('SELECT conversation_id FROM "group" WHERE id_group = %s', (group_id,))
+            conv_data = cursor.fetchone()
+            if conv_data and conv_data["conversation_id"]:
+                cursor.execute("""
                            DELETE
                            FROM participant
                            WHERE conversation_id = %s
@@ -640,8 +651,9 @@ def get_group_icon(group_id):
     if not is_group_member(current_user_id, group_id):
         return {"message": "You are not a member of this group!"}, 403
 
-    cursor.execute('SELECT icon FROM "group" WHERE id_group = %s', (group_id,))
-    result = cursor.fetchone()
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute('SELECT icon FROM "group" WHERE id_group = %s', (group_id,))
+        result = cursor.fetchone()
     if not result or not result["icon"]:
         return {"message": "No icon found for this group"}, 404
 
@@ -665,7 +677,8 @@ def delete_group_icon(group_id):
         return {"message": "You don't have permission to manage this group!"}, 403
 
     try:
-        cursor.execute('UPDATE "group" SET icon = NULL WHERE id_group = %s', (group_id,))
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute('UPDATE "group" SET icon = NULL WHERE id_group = %s', (group_id,))
         db.commit()
         return {"message": "Group icon removed successfully"}
     except:
@@ -697,7 +710,8 @@ def upload_group_icon(group_id):
         return {"message": "Invalid format! Only JPEG and PNG are supported."}, 400
 
     try:
-        cursor.execute('UPDATE "group" SET icon = %s WHERE id_group = %s', (data, group_id))
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute('UPDATE "group" SET icon = %s WHERE id_group = %s', (data, group_id))
         db.commit()
     except:
         db.rollback()

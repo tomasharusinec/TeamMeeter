@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart' show FlutterError, PlatformDispatcher, 
 
 /// Firebase Analytics + Crashlytics (PVP5). Call once after [WidgetsFlutterBinding.ensureInitialized].
 Future<void> configureFirebaseObservability() async {
-  await Firebase.initializeApp();
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp();
+  }
 
   await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
     !kDebugMode,

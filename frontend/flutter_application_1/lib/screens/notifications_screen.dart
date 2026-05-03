@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -168,37 +169,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onCard = AppColors.textPrimary(context);
+    final onCardMuted = AppColors.textMuted(context);
+    final rejectBorder = AppColors.isDark(context)
+        ? Colors.white54
+        : const Color(0xFF8B1A2C);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notifikácie'),
-        backgroundColor: const Color(0xFF1A0A0A),
+        backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: onCard,
       ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF8B1A2C),
-              Color(0xFF3D0C0C),
-              Color(0xFF1A0A0A),
-              Color(0xFF0D0D0D),
-            ],
+            colors: AppColors.screenGradient(context),
           ),
         ),
         child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.circularProgressOnBackground(context),
+                ),
               )
             : _notifications.isEmpty
-            ? const Center(
+            ? Center(
                 child: Text(
                   'Nemáš žiadne notifikácie',
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: onCardMuted),
                 ),
               )
             : RefreshIndicator(
                 onRefresh: _loadNotifications,
+                color: const Color(0xFF8B1A2C),
                 child: ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: _notifications.length,
@@ -212,9 +217,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A0A0A).withAlpha(210),
+                        color: AppColors.listCardBackgroundStrong(context),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white.withAlpha(20)),
+                        border: Border.all(
+                          color: AppColors.listCardBorderMedium(context),
+                        ),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(12),
@@ -223,8 +230,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           children: [
                             Text(
                               _notificationTitle(notification),
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: onCard,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -233,8 +240,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(
                                   'Status: $status',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
+                                  style: TextStyle(
+                                    color: onCardMuted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -266,10 +273,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       accept: false,
                                     ),
                                     style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.white70,
-                                      side: const BorderSide(
-                                        color: Colors.white54,
-                                      ),
+                                      foregroundColor: onCardMuted,
+                                      side: BorderSide(color: rejectBorder),
                                     ),
                                     child: const Text('Odmietnuť'),
                                   ),

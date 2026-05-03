@@ -225,9 +225,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                 // Day rows
                 if (_isLoading)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 60),
-                    child: CircularProgressIndicator(color: Colors.white),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 60),
+                    child: CircularProgressIndicator(
+                      color: AppColors.circularProgressOnBackground(context),
+                    ),
                   )
                 else
                   ...List.generate(7, (i) {
@@ -289,11 +291,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: BoxDecoration(
-        color: (isDarkMode ? const Color(0xFF1A0A0A) : Colors.white).withAlpha(
-          128,
-        ),
+        color: AppColors.calendarWeekNavBackground(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withAlpha(13)),
+        border: Border.all(color: AppColors.calendarWeekNavBorder(context)),
       ),
       child: Column(
         children: [
@@ -302,9 +302,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             children: [
               IconButton(
                 onPressed: () => _changeMonth(-1),
-                icon: const Icon(
+                icon: Icon(
                   Icons.keyboard_double_arrow_left,
-                  color: Colors.white70,
+                  color: AppColors.calendarNavIcon(context),
                 ),
                 splashRadius: 20,
               ),
@@ -314,9 +314,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: isDarkMode ? const Color(0xFF2D1515) : Colors.white,
+                  color: isDarkMode
+                      ? const Color(0xFF2D1515)
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withAlpha(26)),
+                  border: Border.all(
+                    color: AppColors.calendarDayBadgeNonTodayBorder(context),
+                  ),
                 ),
                 child: Text(
                   monthLabel,
@@ -329,9 +333,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               IconButton(
                 onPressed: () => _changeMonth(1),
-                icon: const Icon(
+                icon: Icon(
                   Icons.keyboard_double_arrow_right,
-                  color: Colors.white70,
+                  color: AppColors.calendarNavIcon(context),
                 ),
                 splashRadius: 20,
               ),
@@ -343,7 +347,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
             children: [
               IconButton(
                 onPressed: () => _changeWeek(-1),
-                icon: const Icon(Icons.chevron_left, color: Colors.white70),
+                icon: Icon(
+                  Icons.chevron_left,
+                  color: AppColors.calendarNavIcon(context),
+                ),
                 splashRadius: 20,
               ),
               GestureDetector(
@@ -362,9 +369,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: isDarkMode ? const Color(0xFF2D1515) : Colors.white,
+                    color: isDarkMode
+                        ? const Color(0xFF2D1515)
+                        : Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withAlpha(26)),
+                    border: Border.all(
+                      color: AppColors.calendarDayBadgeNonTodayBorder(context),
+                    ),
                   ),
                   child: Text(
                     'Week: $weekNumber',
@@ -380,7 +391,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               IconButton(
                 onPressed: () => _changeWeek(1),
-                icon: const Icon(Icons.chevron_right, color: Colors.white70),
+                icon: Icon(
+                  Icons.chevron_right,
+                  color: AppColors.calendarNavIcon(context),
+                ),
                 splashRadius: 20,
               ),
             ],
@@ -396,6 +410,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     List<Activity> activities,
     bool isToday,
   ) {
+    final isDark = AppColors.isDark(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -407,12 +422,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             decoration: BoxDecoration(
               color: isToday
                   ? const Color(0xFF8B1A2C)
-                  : const Color(0xFF2D1515),
+                  : AppColors.calendarDayBadgeNonToday(context),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isToday
                     ? const Color(0xFFE57373)
-                    : Colors.white.withAlpha(26),
+                    : AppColors.calendarDayBadgeNonTodayBorder(context),
               ),
               boxShadow: isToday
                   ? [
@@ -431,7 +446,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   Text(
                     label,
                     style: TextStyle(
-                      color: isToday ? Colors.white : Colors.white70,
+                      color: isToday
+                          ? Colors.white
+                          : (isDark
+                              ? Colors.white70
+                              : const Color(0xFF424242)),
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.5,
@@ -440,7 +459,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   Text(
                     _formatDayDate(day),
                     style: TextStyle(
-                      color: isToday ? Colors.white : Colors.white54,
+                      color: isToday
+                          ? Colors.white
+                          : (isDark
+                              ? Colors.white54
+                              : const Color(0xFF616161)),
                       fontSize: 9,
                       fontWeight: FontWeight.w500,
                     ),
@@ -538,7 +561,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: const Color(0xFFF5F0F0),
-          border: Border.all(color: Colors.white.withAlpha(77), width: 2),
+          border: Border.all(
+            color: AppColors.calendarFabBorder(context),
+            width: 2,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withAlpha(77),

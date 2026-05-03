@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 import threading
+from typing import Optional, Tuple
 import psycopg2
 import jwt
 from psycopg2.extras import RealDictCursor
@@ -10,6 +12,7 @@ from dotenv import load_dotenv
 from push_notifications import send_push_to_users
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 cipher_suite = Fernet(os.getenv("MESSAGE_ENCRYPTION_KEY"))
 JWT_SECRET = os.getenv("JWT_SECRET_KEY")
 
@@ -119,25 +122,44 @@ def create_message_notification(conn, message_id: int, conversation_id: int, sen
         }
         broadcast_to_users(recipient_ids, notif_payload)
         preview = text_preview(conn, message_id)
-        conv_name = conversation_name(conn, conversation_id)
+        conv_name, group_id_for_push = conversation_display_and_group(
+            conn, conversation_id
+        )
+        su = sender_username(conn, sender_id)
+        title = f"New message in {conv_name}"
+        body = f"{su}: {preview}"
+        push_data = {
+            "notification_type": "1",
+            "notification_id": str(notification_id),
+            "conversation_id": str(conversation_id),
+            "conversation_name": conv_name,
+            "sender_username": su,
+            "message_id": str(message_id),
+            "chat_kind": "group" if group_id_for_push is not None else "direct",
+            "push_title": title,
+            "push_body": body,
+        }
+        if group_id_for_push is not None:
+            push_data["group_id"] = str(group_id_for_push)
+        # Rovnaký FCM tvar ako aktivita / pozvánka (notification + data). Data-only
+        # chat push na Androide často nevyvolá systémovú notifikáciu vôbec.
         send_push_to_users(
             recipient_ids,
-            title=f"New message in {conv_name}",
-            body=f"{sender_username(conn, sender_id)}: {preview}",
-            data={
-                "notification_type": "1",
-                "notification_id": str(notification_id),
-                "conversation_id": str(conversation_id),
-                "conversation_name": conv_name,
-                "sender_username": sender_username(conn, sender_id),
-                "message_id": str(message_id),
-            },
+            title=title,
+            body=body,
+            data=push_data,
         )
 
-    except:
+    except Exception:
+        logger.exception(
+            "create_message_notification failed (conv=%s msg=%s sender=%s)",
+            conversation_id,
+            message_id,
+            sender_id,
+        )
         try:
             conn.rollback()
-        except:
+        except Exception:
             pass
 
 # This function was created based on create_message_notification function
@@ -301,20 +323,46 @@ def text_preview(conn, message_id: int) -> str:
     return "Poslal(a) novu spravu"
 
 
-def conversation_name(conn, conversation_id: int) -> str:
+def conversation_display_and_group(
+    conn, conversation_id: int
+) -> Tuple[str, Optional[int]]:
+    """Human-readable chat title for push + group id when this chat is a group channel."""
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT name FROM conversation WHERE id = %s", (conversation_id,))
+            cur.execute(
+                """
+                SELECT c.name AS conv_name, g.id_group AS group_id, g.name AS group_name
+                FROM conversation c
+                LEFT JOIN "group" g ON g.conversation_id = c.id
+                WHERE c.id = %s
+                """,
+                (conversation_id,),
+            )
             row = cur.fetchone()
-            if row:
-                name = row.get("name")
-                if isinstance(name, str):
-                    cleaned = name.strip()
-                    if cleaned:
-                        return cleaned
-    except:
+            if not row:
+                return (f"Conversation #{conversation_id}", None)
+            gn = row.get("group_name")
+            if isinstance(gn, str) and gn.strip():
+                return (gn.strip(), row.get("group_id"))
+            cn = row.get("conv_name")
+            if isinstance(cn, str) and cn.strip():
+                return (cn.strip(), row.get("group_id"))
+            cur.execute(
+                """
+                SELECT string_agg(u.username, ', ' ORDER BY u.username) AS names
+                FROM participant p
+                JOIN "user" u ON u.id_registration = p.user_id
+                WHERE p.conversation_id = %s
+                """,
+                (conversation_id,),
+            )
+            row2 = cur.fetchone()
+            names = row2.get("names") if row2 else None
+            if isinstance(names, str) and names.strip():
+                return (names.strip(), None)
+    except Exception:
         pass
-    return f"Conversation #{conversation_id}"
+    return (f"Conversation #{conversation_id}", None)
 
 
 def group_name(conn, group_id: int) -> str:

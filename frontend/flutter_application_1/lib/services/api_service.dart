@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user.dart';
@@ -48,6 +49,9 @@ class ApiService {
   void setToken(String? token) {
     _token = token;
   }
+
+  bool get hasAuthToken =>
+      _token != null && _token!.trim().isNotEmpty;
 
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
@@ -500,6 +504,19 @@ class ApiService {
     );
   }
 
+  Future<void> _removeMessageFromCachedConversation(
+    int conversationId,
+    int messageId,
+  ) async {
+    final cached = await _loadCachedConversationMessages(conversationId);
+    final filtered = cached.where((m) {
+      final id = m['id'];
+      final mid = id is int ? id : (id is num ? id.toInt() : null);
+      return mid != messageId;
+    }).toList();
+    await saveConversationMessagesToCache(conversationId, filtered);
+  }
+
   Future<List<Map<String, dynamic>>> _loadCachedConversationMessages(
     int conversationId,
   ) async {
@@ -635,8 +652,74 @@ class ApiService {
       // Give backend a short moment to complete auth handshake.
       await Future.delayed(const Duration(milliseconds: 150));
 
-      final remaining = <Map<String, dynamic>>[];
+      final afterDeleteSync = <Map<String, dynamic>>[];
       for (final op in pending) {
+        final opType = op['type']?.toString();
+        if (opType == 'delete_message') {
+          final cidRaw = op['conversation_id'];
+          final convId = cidRaw is int
+              ? cidRaw
+              : (cidRaw is num
+                  ? cidRaw.toInt()
+                  : int.tryParse(cidRaw?.toString() ?? ''));
+          final midRaw = op['message_id'];
+          final msgId = midRaw is int
+              ? midRaw
+              : (midRaw is num
+                  ? midRaw.toInt()
+                  : int.tryParse(midRaw?.toString() ?? ''));
+          if (convId == null ||
+              convId <= 0 ||
+              msgId == null ||
+              msgId <= 0) {
+            continue;
+          }
+          try {
+            final response = await http
+                .delete(
+                  Uri.parse(
+                    '$baseUrl/conversations/$convId/messages/$msgId',
+                  ),
+                  headers: _headers,
+                )
+                .timeout(const Duration(seconds: 8));
+            if (response.statusCode == 200 || response.statusCode == 404) {
+              syncedAny = true;
+              continue;
+            }
+          } catch (_) {}
+          afterDeleteSync.add(op);
+        } else if (opType == 'delete_conversation') {
+          final cidRaw = op['conversation_id'];
+          final id = cidRaw is int
+              ? cidRaw
+              : (cidRaw is num
+                  ? cidRaw.toInt()
+                  : int.tryParse(cidRaw?.toString() ?? ''));
+          if (id == null || id <= 0) {
+            continue;
+          }
+          try {
+            final response = await http
+                .delete(
+                  Uri.parse('$baseUrl/conversations/$id'),
+                  headers: _headers,
+                )
+                .timeout(const Duration(seconds: 8));
+            if (response.statusCode == 200 || response.statusCode == 404) {
+              await _removeCachedConversation(id);
+              syncedAny = true;
+              continue;
+            }
+          } catch (_) {}
+          afterDeleteSync.add(op);
+        } else {
+          afterDeleteSync.add(op);
+        }
+      }
+
+      final remaining = <Map<String, dynamic>>[];
+      for (final op in afterDeleteSync) {
         try {
           final type = op['type']?.toString();
           if (type == 'send_message') {
@@ -1153,6 +1236,32 @@ class ApiService {
     return roles.map((role) => Role.fromJson(role)).toList();
   }
 
+  /// Role priradené konkrétnemu používateľovi v skupine (GET /roles/groups/.../users/...).
+  Future<List<Map<String, dynamic>>> getUserRolesInGroup({
+    required int groupId,
+    required int userId,
+  }) async {
+    int resolvedGroupId = groupId;
+    if (groupId < 0) {
+      resolvedGroupId = await _resolveServerGroupId(groupId);
+    }
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/roles/groups/$resolvedGroupId/users/$userId'),
+          headers: _headers,
+        )
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final raw = data['roles'];
+      final list = raw is List ? raw : <dynamic>[];
+      return List<Map<String, dynamic>>.from(
+        list.map((e) => Map<String, dynamic>.from(e as Map)),
+      );
+    }
+    throw _buildApiException(response, 'Nepodarilo sa načítať roly používateľa');
+  }
+
   Future<Map<String, dynamic>> createGroupRole({
     required int groupId,
     required String name,
@@ -1591,27 +1700,73 @@ class ApiService {
     }
   }
 
-  Future<void> deleteConversation(int conversationId) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/conversations/$conversationId'),
-      headers: _headers,
-    );
-    if (response.statusCode != 200) {
-      throw _buildApiException(response, 'Nepodarilo sa zmazať konverzáciu');
+  /// Returns `true` if the server confirmed delete, `false` if queued for offline sync.
+  Future<bool> deleteConversation(int conversationId) async {
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/conversations/$conversationId'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        throw _buildApiException(response, 'Nepodarilo sa zmazať konverzáciu');
+      }
+      await _removeCachedConversation(conversationId);
+      return true;
+    } catch (e) {
+      if (!_isConnectivityError(e) && e is! TimeoutException) rethrow;
+      final ops = await _loadPendingChatOps();
+      final filtered = ops.where((op) {
+        final cidRaw = op['conversation_id'];
+        final oid = cidRaw is int
+            ? cidRaw
+            : (cidRaw is num
+                ? cidRaw.toInt()
+                : int.tryParse(cidRaw?.toString() ?? ''));
+        return oid != conversationId;
+      }).toList();
+      filtered.add({
+        'type': 'delete_conversation',
+        'conversation_id': conversationId,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      await _savePendingChatOps(filtered);
+      await _removeCachedConversation(conversationId);
+      return false;
     }
-    await _removeCachedConversation(conversationId);
   }
 
-  Future<void> deleteConversationMessage({
+  /// Returns `true` if the server deleted the message, `false` if queued offline.
+  Future<bool> deleteConversationMessage({
     required int conversationId,
     required int messageId,
   }) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/conversations/$conversationId/messages/$messageId'),
-      headers: _headers,
-    );
-    if (response.statusCode != 200) {
+    try {
+      final response = await http
+          .delete(
+            Uri.parse(
+              '$baseUrl/conversations/$conversationId/messages/$messageId',
+            ),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        return true;
+      }
       throw _buildApiException(response, 'Nepodarilo sa zmazať správu');
+    } catch (e) {
+      if (!_isConnectivityError(e) && e is! TimeoutException) rethrow;
+      final ops = await _loadPendingChatOps();
+      ops.add({
+        'type': 'delete_message',
+        'conversation_id': conversationId,
+        'message_id': messageId,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      await _savePendingChatOps(ops);
+      await _removeMessageFromCachedConversation(conversationId, messageId);
+      return false;
     }
   }
 

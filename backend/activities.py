@@ -805,7 +805,11 @@ def get_my_activities():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
 
-    cursor.execute("""
+    # Vlastný kurzor: modulový `cursor` je zdieľaný naprieč requestami a pri paralelnom
+    # Flask serveri spôsobuje psycopg2.ProgrammingError: no results to fetch.
+    with db.cursor(cursor_factory=RealDictCursor) as local_cursor:
+        local_cursor.execute(
+            """
         SELECT DISTINCT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.status, a.group_id, g.name AS group_name, u_creator.username AS creator_username
         FROM activity a
         LEFT JOIN "group" g ON a.group_id = g.id_group
@@ -815,7 +819,9 @@ def get_my_activities():
         LEFT JOIN user_role ur ON ar.role_id = ur.role_id AND ur.user_id = %s
         WHERE (au.id_user = %s OR ur.user_id = %s OR (a.group_id IS NULL AND a.creator_id = %s))
           AND (a.deadline IS NULL OR a.deadline > CURRENT_TIMESTAMP)
-    """, (current_user_id, current_user_id, current_user_id, current_user_id))
-    activities = cursor.fetchall()
+    """,
+            (current_user_id, current_user_id, current_user_id, current_user_id),
+        )
+        activities = local_cursor.fetchall()
 
     return {"message": "Success", "activities": activities}, 200

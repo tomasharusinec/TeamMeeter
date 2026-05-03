@@ -32,6 +32,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
     'delete_group',
     'add_user',
     'kick_user',
+    'delete_messages',
     'create_role',
     'edit_role',
     'delete_role',
@@ -83,15 +84,15 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1A0A0A),
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.dialogBackground(dialogContext),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
           title: Text(
             role == null ? 'Create role' : 'Edit role',
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: AppColors.textPrimary(dialogContext)),
           ),
           content: SizedBox(
             width: 360,
@@ -101,13 +102,15 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                 children: [
                   TextField(
                     controller: nameController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.textPrimary(dialogContext)),
                     decoration: InputDecoration(
                       labelText: 'Role name',
-                      labelStyle: const TextStyle(color: Colors.white70),
+                      labelStyle: TextStyle(
+                        color: AppColors.textMuted(dialogContext),
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderSide: BorderSide(
-                          color: Colors.white.withAlpha(60),
+                          color: AppColors.outlineMuted(dialogContext),
                         ),
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -120,7 +123,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: colorController,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: AppColors.textPrimary(dialogContext)),
                     onChanged: (value) {
                       setDialogState(() {
                         selectedColor = _parseRoleColor(value);
@@ -129,11 +132,15 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     decoration: InputDecoration(
                       labelText: 'Color hex (optional)',
                       hintText: '#8B1A2C',
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      hintStyle: const TextStyle(color: Colors.white30),
+                      labelStyle: TextStyle(
+                        color: AppColors.textMuted(dialogContext),
+                      ),
+                      hintStyle: TextStyle(
+                        color: AppColors.textDisabled(dialogContext),
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderSide: BorderSide(
-                          color: Colors.white.withAlpha(60),
+                          color: AppColors.outlineMuted(dialogContext),
                         ),
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -149,7 +156,9 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                           decoration: BoxDecoration(
                             color: selectedColor,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white54),
+                            border: Border.all(
+                              color: AppColors.outlineStrong(dialogContext),
+                            ),
                           ),
                         ),
                       ),
@@ -164,10 +173,13 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                         final picked = await showDialog<Color>(
                           context: context,
                           builder: (pickerContext) => AlertDialog(
-                            backgroundColor: const Color(0xFF1A0A0A),
-                            title: const Text(
+                            backgroundColor:
+                                AppColors.dialogBackground(pickerContext),
+                            title: Text(
                               'Pick role color',
-                              style: TextStyle(color: Colors.white),
+                              style: TextStyle(
+                                color: AppColors.textPrimary(pickerContext),
+                              ),
                             ),
                             content: SingleChildScrollView(
                               child: ColorPicker(
@@ -182,9 +194,11 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(pickerContext),
-                                child: const Text(
+                                child: Text(
                                   'Cancel',
-                                  style: TextStyle(color: Colors.white54),
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary(pickerContext),
+                                  ),
                                 ),
                               ),
                               ElevatedButton(
@@ -209,18 +223,20 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       icon: const Icon(Icons.color_lens_outlined),
                       label: const Text('Pick color'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(color: Colors.white.withAlpha(90)),
+                        foregroundColor: AppColors.textPrimary(dialogContext),
+                        side: BorderSide(
+                          color: AppColors.outlineStrong(dialogContext),
+                        ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 14),
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Permissions',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.textPrimary(dialogContext),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -244,8 +260,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       controlAffinity: ListTileControlAffinity.leading,
                       title: Text(
                         permission,
-                        style: const TextStyle(
-                          color: Colors.white70,
+                        style: TextStyle(
+                          color: AppColors.textMuted(dialogContext),
                           fontSize: 13,
                         ),
                       ),
@@ -257,10 +273,12 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
                 'Cancel',
-                style: TextStyle(color: Colors.white54),
+                style: TextStyle(
+                  color: AppColors.textSecondary(dialogContext),
+                ),
               ),
             ),
             ElevatedButton(
@@ -268,7 +286,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                 final name = nameController.text.trim();
                 final color = colorController.text.trim();
                 if (name.isEmpty) {
-                  context.showLatestSnackBar(
+                  this.context.showLatestSnackBar(
                     const SnackBar(content: Text('Role name is required')),
                   );
                   return;
@@ -296,8 +314,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     );
                   }
                   final afterQueue = await api.getPendingOfflineChangesCount();
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
+                  if (!dialogContext.mounted) return;
+                  Navigator.pop(dialogContext);
                   await _loadRoles();
                   if (afterQueue > beforeQueue && mounted) {
                     this.context.showLatestSnackBar(
@@ -308,8 +326,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     );
                   }
                 } catch (e) {
-                  if (!context.mounted) return;
-                  context.showLatestSnackBar(
+                  if (!dialogContext.mounted) return;
+                  this.context.showLatestSnackBar(
                     SnackBar(
                       content: Text(e.toString().replaceAll('Exception: ', '')),
                       backgroundColor: const Color(0xFF8B1A2C),
@@ -332,23 +350,28 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
   Future<void> _deleteRole(Role role) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A0A0A),
-        title: const Text('Delete role', style: TextStyle(color: Colors.white)),
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.dialogBackground(dialogContext),
+        title: Text(
+          'Delete role',
+          style: TextStyle(color: AppColors.textPrimary(dialogContext)),
+        ),
         content: Text(
           'Delete role "${role.name}"?',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(color: AppColors.textMuted(dialogContext)),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(
+                color: AppColors.textSecondary(dialogContext),
+              ),
             ),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF8B1A2C),
               foregroundColor: Colors.white,
@@ -403,15 +426,15 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1A0A0A),
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.dialogBackground(dialogContext),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          title: const Text(
+          title: Text(
             'Assign role to user',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: AppColors.textPrimary(dialogContext)),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -419,20 +442,24 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
               DropdownButtonFormField<String>(
                 value: selectedUsername,
                 isExpanded: true,
-                dropdownColor: const Color(0xFF1A0A0A),
+                dropdownColor: AppColors.dialogBackground(dialogContext),
                 decoration: InputDecoration(
                   labelText: 'User',
-                  labelStyle: const TextStyle(color: Colors.white70),
+                  labelStyle: TextStyle(
+                    color: AppColors.textMuted(dialogContext),
+                  ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withAlpha(60)),
+                    borderSide: BorderSide(
+                      color: AppColors.outlineMuted(dialogContext),
+                    ),
                   ),
                   focusedBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                     borderSide: BorderSide(color: Color(0xFF8B1A2C)),
                   ),
                 ),
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
                 items: _members
                     .map(
                       (m) => DropdownMenuItem<String>(
@@ -451,20 +478,24 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
               DropdownButtonFormField<int>(
                 value: selectedRole?.idRole,
                 isExpanded: true,
-                dropdownColor: const Color(0xFF1A0A0A),
+                dropdownColor: AppColors.dialogBackground(dialogContext),
                 decoration: InputDecoration(
                   labelText: 'Role',
-                  labelStyle: const TextStyle(color: Colors.white70),
+                  labelStyle: TextStyle(
+                    color: AppColors.textMuted(dialogContext),
+                  ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withAlpha(60)),
+                    borderSide: BorderSide(
+                      color: AppColors.outlineMuted(dialogContext),
+                    ),
                   ),
                   focusedBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                     borderSide: BorderSide(color: Color(0xFF8B1A2C)),
                   ),
                 ),
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
                 items: _roles
                     .map(
                       (r) => DropdownMenuItem<int>(
@@ -483,10 +514,12 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
                 'Cancel',
-                style: TextStyle(color: Colors.white54),
+                style: TextStyle(
+                  color: AppColors.textSecondary(dialogContext),
+                ),
               ),
             ),
             ElevatedButton(
@@ -504,8 +537,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     roleId: selectedRole!.idRole,
                   );
                   final afterQueue = await api.getPendingOfflineChangesCount();
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
+                  if (!dialogContext.mounted) return;
+                  Navigator.pop(dialogContext);
                   this.context.showLatestSnackBar(
                     SnackBar(
                       content: Text(
@@ -519,8 +552,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!context.mounted) return;
-                  context.showLatestSnackBar(
+                  if (!dialogContext.mounted) return;
+                  this.context.showLatestSnackBar(
                     SnackBar(
                       content: Text(e.toString().replaceAll('Exception: ', '')),
                       backgroundColor: const Color(0xFF8B1A2C),
@@ -556,15 +589,15 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1A0A0A),
+      builder: (_) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.dialogBackground(dialogContext),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          title: const Text(
+          title: Text(
             'Remove role from user',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: AppColors.textPrimary(dialogContext)),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -572,20 +605,24 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
               DropdownButtonFormField<String>(
                 value: selectedUsername,
                 isExpanded: true,
-                dropdownColor: const Color(0xFF1A0A0A),
+                dropdownColor: AppColors.dialogBackground(dialogContext),
                 decoration: InputDecoration(
                   labelText: 'User',
-                  labelStyle: const TextStyle(color: Colors.white70),
+                  labelStyle: TextStyle(
+                    color: AppColors.textMuted(dialogContext),
+                  ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withAlpha(60)),
+                    borderSide: BorderSide(
+                      color: AppColors.outlineMuted(dialogContext),
+                    ),
                   ),
                   focusedBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                     borderSide: BorderSide(color: Color(0xFF8B1A2C)),
                   ),
                 ),
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
                 items: _members
                     .map(
                       (m) => DropdownMenuItem<String>(
@@ -604,20 +641,24 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
               DropdownButtonFormField<int>(
                 value: selectedRole?.idRole,
                 isExpanded: true,
-                dropdownColor: const Color(0xFF1A0A0A),
+                dropdownColor: AppColors.dialogBackground(dialogContext),
                 decoration: InputDecoration(
                   labelText: 'Role',
-                  labelStyle: const TextStyle(color: Colors.white70),
+                  labelStyle: TextStyle(
+                    color: AppColors.textMuted(dialogContext),
+                  ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withAlpha(60)),
+                    borderSide: BorderSide(
+                      color: AppColors.outlineMuted(dialogContext),
+                    ),
                   ),
                   focusedBorder: const OutlineInputBorder(
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                     borderSide: BorderSide(color: Color(0xFF8B1A2C)),
                   ),
                 ),
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
                 items: _roles
                     .map(
                       (r) => DropdownMenuItem<int>(
@@ -636,10 +677,12 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
                 'Cancel',
-                style: TextStyle(color: Colors.white54),
+                style: TextStyle(
+                  color: AppColors.textSecondary(dialogContext),
+                ),
               ),
             ),
             ElevatedButton(
@@ -665,8 +708,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     roleId: selectedRole!.idRole,
                   );
                   final afterQueue = await api.getPendingOfflineChangesCount();
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
+                  if (!dialogContext.mounted) return;
+                  Navigator.pop(dialogContext);
                   this.context.showLatestSnackBar(
                     SnackBar(
                       content: Text(
@@ -680,7 +723,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                     ),
                   );
                 } catch (e) {
-                  if (!context.mounted) return;
+                  if (!dialogContext.mounted) return;
                   this.context.showLatestSnackBar(
                     SnackBar(
                       content: Text(e.toString().replaceAll('Exception: ', '')),
@@ -725,6 +768,7 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
       appBar: AppBar(
         title: Text('Roles - ${widget.groupName}'),
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: AppColors.textPrimary(context),
         actions: [
           IconButton(
             onPressed: _showAssignRoleDialog,
@@ -747,20 +791,24 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           ),
         ),
         child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.circularProgressOnBackground(context),
+                ),
               )
             : RefreshIndicator(
                 onRefresh: _loadRoles,
                 color: const Color(0xFF8B1A2C),
                 child: _roles.isEmpty
                     ? ListView(
-                        children: const [
-                          SizedBox(height: 160),
+                        children: [
+                          const SizedBox(height: 160),
                           Center(
                             child: Text(
                               'No roles yet',
-                              style: TextStyle(color: Colors.white60),
+                              style: TextStyle(
+                                color: AppColors.textMuted(context),
+                              ),
                             ),
                           ),
                         ],
@@ -773,10 +821,10 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1A0A0A).withAlpha(190),
+                              color: AppColors.listCardBackground(context),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: Colors.white.withAlpha(20),
+                                color: AppColors.listCardBorderMedium(context),
                               ),
                             ),
                             child: ListTile(
@@ -790,17 +838,21 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                               ),
                               title: Text(
                                 role.name,
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(context),
+                                ),
                               ),
                               subtitle: Text(
                                 role.color ?? 'No color',
-                                style: const TextStyle(color: Colors.white54),
+                                style: TextStyle(
+                                  color: AppColors.textSecondary(context),
+                                ),
                               ),
                               trailing: PopupMenuButton<String>(
-                                color: const Color(0xFF1A0A0A),
-                                icon: const Icon(
+                                color: AppColors.dialogBackground(context),
+                                icon: Icon(
                                   Icons.more_vert,
-                                  color: Colors.white70,
+                                  color: AppColors.textMuted(context),
                                 ),
                                 onSelected: (value) {
                                   if (value == 'edit') {
@@ -809,19 +861,27 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                                     _deleteRole(role);
                                   }
                                 },
-                                itemBuilder: (context) => const [
+                                itemBuilder: (menuContext) => [
                                   PopupMenuItem(
                                     value: 'edit',
                                     child: Text(
                                       'Edit',
-                                      style: TextStyle(color: Colors.white),
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary(
+                                          menuContext,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   PopupMenuItem(
                                     value: 'delete',
                                     child: Text(
                                       'Delete',
-                                      style: TextStyle(color: Colors.white),
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary(
+                                          menuContext,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],

@@ -40,12 +40,19 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
       setState(() => _activities = activities);
     } catch (e) {
       if (!mounted) return;
+      final msg = e.toString().replaceAll('Exception: ', '');
+      final noAccess = msg.toLowerCase().contains('permission');
       context.showLatestSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(msg),
           backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
+      if (noAccess) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) Navigator.of(context).pop();
+        });
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -64,6 +71,7 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
         title: Text('${widget.groupName} activities'),
         centerTitle: true,
         backgroundColor: AppColors.dialogBackground(context),
+        foregroundColor: AppColors.textPrimary(context),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -75,25 +83,29 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
           ),
         ),
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.white))
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.circularProgressOnBackground(context),
+                ),
+              )
             : RefreshIndicator(
                 onRefresh: _loadActivities,
                 color: const Color(0xFF8B1A2C),
                 child: _activities.isEmpty
                     ? ListView(
                         padding: const EdgeInsets.all(16),
-                        children: const [
-                          SizedBox(height: 120),
+                        children: [
+                          const SizedBox(height: 120),
                           Icon(
                             Icons.playlist_add_check_circle_outlined,
                             size: 64,
-                            color: Colors.white38,
+                            color: AppColors.textDisabled(context),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           Text(
                             'V tejto skupine zatiaľ nie sú žiadne aktivity',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white60),
+                            style: TextStyle(color: AppColors.textMuted(context)),
                           ),
                         ],
                       )
@@ -105,9 +117,11 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1A0A0A).withAlpha(200),
+                              color: AppColors.listCardBackground(context),
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.white.withAlpha(16)),
+                              border: Border.all(
+                                color: AppColors.listCardBorder(context),
+                              ),
                             ),
                             child: ListTile(
                               onTap: () async {
@@ -123,8 +137,8 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
                               },
                               title: Text(
                                 activity.name,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: AppColors.textPrimary(context),
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -134,8 +148,8 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
                                   const SizedBox(height: 4),
                                   Text(
                                     'Stav: ${_statusLabel(activity.status)}',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
+                                    style: TextStyle(
+                                      color: AppColors.textMuted(context),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -143,16 +157,16 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
                                     activity.formattedDeadline.isEmpty
                                         ? 'Bez termínu'
                                         : activity.formattedDeadline,
-                                    style: const TextStyle(
-                                      color: Colors.white54,
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary(context),
                                       fontSize: 12,
                                     ),
                                   ),
                                 ],
                               ),
-                              trailing: const Icon(
+                              trailing: Icon(
                                 Icons.chevron_right_rounded,
-                                color: Colors.white38,
+                                color: AppColors.textDisabled(context),
                               ),
                             ),
                           );

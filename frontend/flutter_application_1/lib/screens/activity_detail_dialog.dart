@@ -199,8 +199,10 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
                       OutlinedButton(
                         onPressed: () => Navigator.of(context).pop(),
                         style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.white.withAlpha(60)),
-                          foregroundColor: Colors.white70,
+                          side: BorderSide(
+                            color: AppColors.outlineStrong(context),
+                          ),
+                          foregroundColor: AppColors.textMuted(context),
                         ),
                         child: const Text('Close'),
                       ),
