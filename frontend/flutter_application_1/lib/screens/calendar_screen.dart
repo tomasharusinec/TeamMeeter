@@ -587,6 +587,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _loadActivities();
           widget.onDataChanged?.call();
         },
+        onUpdated: () {
+          _loadActivities();
+          widget.onDataChanged?.call();
+        },
       ),
     );
   }

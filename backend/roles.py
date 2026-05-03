@@ -6,7 +6,7 @@ from flask import Blueprint
 from helper_func import get_current_user_id, db, is_group_member, check_permission, load_yaml
 
 roles_blueprint = Blueprint('/roles', __name__)
-cursor = db.cursor(cursor_factory=RealDictCursor)
+
 
 @roles_blueprint.route('/groups/<int:group_id>', methods=["GET"])
 @swag_from(load_yaml("documentation/roles.yaml", "get_roles"))
@@ -19,23 +19,24 @@ def get_roles(group_id):
     if not is_group_member(current_user_id, group_id):
         return {"message": "You are not a member of this group!"}, 403
 
-    cursor.execute("""
-        SELECT
-            r.id_role,
-            r.name,
-            r.color,
-            COALESCE(
-                ARRAY_AGG(p.name) FILTER (WHERE rp.value = TRUE),
-                ARRAY[]::varchar[]
-            ) AS permissions
-        FROM role r
-        LEFT JOIN role_permission rp ON rp.role_id = r.id_role
-        LEFT JOIN permission p ON p.id_permission = rp.permission_id
-        WHERE r.group_id = %s
-        GROUP BY r.id_role, r.name, r.color
-        ORDER BY r.name
-    """, (group_id,))
-    roles = cursor.fetchall()
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
+            SELECT
+                r.id_role,
+                r.name,
+                r.color,
+                COALESCE(
+                    ARRAY_AGG(p.name) FILTER (WHERE rp.value = TRUE),
+                    ARRAY[]::varchar[]
+                ) AS permissions
+            FROM role r
+            LEFT JOIN role_permission rp ON rp.role_id = r.id_role
+            LEFT JOIN permission p ON p.id_permission = rp.permission_id
+            WHERE r.group_id = %s
+            GROUP BY r.id_role, r.name, r.color
+            ORDER BY r.name
+        """, (group_id,))
+        roles = cursor.fetchall()
     return {"message": "Success", "roles": roles}, 200
 
 
@@ -62,18 +63,19 @@ def create_role(group_id):
         return {"message": "Invalid format!"}, 400
 
     try:
-        cursor.execute("""INSERT INTO role (group_id, name, color) 
-                          VALUES (%s, %s, %s)
-            RETURNING id_role
-        """, (group_id, name, color))
-        role_id = cursor.fetchone()["id_role"]
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""INSERT INTO role (group_id, name, color)
+                              VALUES (%s, %s, %s)
+                RETURNING id_role
+            """, (group_id, name, color))
+            role_id = cursor.fetchone()["id_role"]
 
-        if permissions_list:
-            cursor.execute("""INSERT INTO Role_permission (role_id, permission_id, value) 
-                              SELECT %s, id_permission, TRUE 
-                              FROM Permission 
-                              WHERE name = ANY (%s) 
-                            """, (role_id, permissions_list))
+            if permissions_list:
+                cursor.execute("""INSERT INTO Role_permission (role_id, permission_id, value)
+                                  SELECT %s, id_permission, TRUE
+                                  FROM Permission
+                                  WHERE name = ANY (%s)
+                                """, (role_id, permissions_list))
         db.commit()
     except:
         db.rollback()
@@ -110,22 +112,23 @@ def update_role(group_id, role_id):
     permissions_list = request.json.get("permissions")
 
     try:
-        cursor.execute("""
-            UPDATE role SET
-                name = COALESCE(%s, name),
-                color = COALESCE(%s, color)
-            WHERE id_role = %s AND group_id = %s
-        """, (name, color, role_id, group_id))
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                UPDATE role SET
+                    name = COALESCE(%s, name),
+                    color = COALESCE(%s, color)
+                WHERE id_role = %s AND group_id = %s
+            """, (name, color, role_id, group_id))
 
-        if permissions_list is not None:
-            cursor.execute("DELETE FROM Role_permission WHERE role_id = %s", (role_id,))
-            if permissions_list:
-                cursor.execute("""
-                               INSERT INTO Role_permission (role_id, permission_id, value)
-                               SELECT %s, id_permission, TRUE
-                               FROM Permission
-                               WHERE name = ANY (%s)
-                               """, (role_id, permissions_list))
+            if permissions_list is not None:
+                cursor.execute("DELETE FROM Role_permission WHERE role_id = %s", (role_id,))
+                if permissions_list:
+                    cursor.execute("""
+                                   INSERT INTO Role_permission (role_id, permission_id, value)
+                                   SELECT %s, id_permission, TRUE
+                                   FROM Permission
+                                   WHERE name = ANY (%s)
+                                   """, (role_id, permissions_list))
         db.commit()
     except:
         db.rollback()
@@ -149,9 +152,10 @@ def delete_role(group_id, role_id):
         return {"message": "You don't have permission to manage roles!"}, 403
 
     try:
-        cursor.execute("""
-            DELETE FROM role WHERE id_role = %s AND group_id = %s
-        """, (role_id, group_id))
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                DELETE FROM role WHERE id_role = %s AND group_id = %s
+            """, (role_id, group_id))
         db.commit()
     except:
         db.rollback()
@@ -171,13 +175,14 @@ def get_user_roles(group_id, user_id):
     if not is_group_member(current_user_id, group_id):
         return {"message": "You are not a member of this group!"}, 403
 
-    cursor.execute("""
-        SELECT r.id_role, r.name, r.color
-        FROM user_role ur
-        JOIN role r ON ur.role_id = r.id_role
-        WHERE ur.user_id = %s AND r.group_id = %s
-    """, (user_id, group_id))
-    roles = cursor.fetchall()
+    with db.cursor(cursor_factory=RealDictCursor) as cursor:
+        cursor.execute("""
+            SELECT r.id_role, r.name, r.color
+            FROM user_role ur
+            JOIN role r ON ur.role_id = r.id_role
+            WHERE ur.user_id = %s AND r.group_id = %s
+        """, (user_id, group_id))
+        roles = cursor.fetchall()
     return {"message": "Success", "roles": roles}, 200
 
 
@@ -202,30 +207,34 @@ def assign_user_role(group_id):
     except:
         return {"message": "Invalid format!"}, 400
 
-    cursor.execute("SELECT id_role FROM role WHERE id_role = %s AND group_id = %s", (role_id, group_id))
-    if cursor.fetchone() is None:
-        return {"message": "Role not found in this group!"}, 404
-
     try:
-        cursor.execute("""SELECT u.id_registration 
-                          FROM "user" u 
-                        JOIN Group_member gm ON u.id_registration = gm.user_id
-                        WHERE u.username = %s
-                        AND gm.group_id = %s
-                        """, (username, group_id))
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                "SELECT id_role FROM role WHERE id_role = %s AND group_id = %s",
+                (role_id, group_id),
+            )
+            if cursor.fetchone() is None:
+                return {"message": "Role not found in this group!"}, 404
 
-        user_row = cursor.fetchone()
-        if not user_row:
-            return {"message": "User not found or is not a member of this group!"}, 404
+            cursor.execute("""SELECT u.id_registration
+                              FROM "user" u
+                            JOIN Group_member gm ON u.id_registration = gm.user_id
+                            WHERE u.username = %s
+                            AND gm.group_id = %s
+                            """, (username, group_id))
 
-        user_id = user_row["id_registration"]
-        cursor.execute("""
-            INSERT INTO user_role (user_id, role_id) VALUES (%s, %s)
-            ON CONFLICT (user_id, role_id) DO NOTHING
-        """, (user_id, role_id))
-        if cursor.rowcount == 0:
-            db.commit()
-            return {"message": "User already has this role"}, 200
+            user_row = cursor.fetchone()
+            if not user_row:
+                return {"message": "User not found or is not a member of this group!"}, 404
+
+            user_id = user_row["id_registration"]
+            cursor.execute("""
+                INSERT INTO user_role (user_id, role_id) VALUES (%s, %s)
+                ON CONFLICT (user_id, role_id) DO NOTHING
+            """, (user_id, role_id))
+            if cursor.rowcount == 0:
+                db.commit()
+                return {"message": "User already has this role"}, 200
         db.commit()
     except:
         db.rollback()
@@ -249,9 +258,10 @@ def remove_user_role(group_id, user_id, role_id):
         return {"message": "You don't have permission to manage roles!"}, 403
 
     try:
-        cursor.execute("""
-            DELETE FROM user_role WHERE user_id = %s AND role_id = %s
-        """, (user_id, role_id))
+        with db.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                DELETE FROM user_role WHERE user_id = %s AND role_id = %s
+            """, (user_id, role_id))
         db.commit()
     except:
         db.rollback()

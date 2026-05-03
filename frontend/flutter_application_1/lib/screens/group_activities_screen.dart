@@ -130,6 +130,7 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
                                   builder: (_) => ActivityDetailDialog(
                                     activity: activity,
                                     onDeleted: _loadActivities,
+                                    onUpdated: _loadActivities,
                                   ),
                                 );
                                 if (!mounted) return;

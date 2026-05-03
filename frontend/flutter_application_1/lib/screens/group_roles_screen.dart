@@ -317,11 +317,27 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                   if (!dialogContext.mounted) return;
                   Navigator.pop(dialogContext);
                   await _loadRoles();
-                  if (afterQueue > beforeQueue && mounted) {
+                  if (!mounted) return;
+                  if (afterQueue > beforeQueue) {
                     this.context.showLatestSnackBar(
                       const SnackBar(
                         content: Text('Zmena rolí je uložená offline.'),
                         backgroundColor: Color(0xFFEF6C00),
+                        duration: Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  } else {
+                    this.context.showLatestSnackBar(
+                      SnackBar(
+                        content: Text(
+                          role == null
+                              ? 'Rola bola úspešne vytvorená.'
+                              : 'Úpravy roly boli uložené.',
+                        ),
+                        backgroundColor: const Color(0xFF2E7D32),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
                       ),
                     );
                   }
@@ -394,6 +410,17 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
           const SnackBar(
             content: Text('Vymazanie roly je uložené offline.'),
             backgroundColor: Color(0xFFEF6C00),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else if (mounted) {
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text('Rola bola odstránená.'),
+            backgroundColor: Color(0xFF2E7D32),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -406,171 +433,6 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
         ),
       );
     }
-  }
-
-  Future<void> _showAssignRoleDialog() async {
-    if (_roles.isEmpty || _members.isEmpty) {
-      context.showLatestSnackBar(
-        const SnackBar(
-          content: Text(
-            'Najprv vytvorte rolu a uistite sa, že skupina má členov',
-          ),
-          backgroundColor: Color(0xFF8B1A2C),
-        ),
-      );
-      return;
-    }
-
-    String? selectedUsername = _members.first['username']?.toString();
-    Role? selectedRole = _roles.first;
-
-    await showDialog(
-      context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          backgroundColor: AppColors.dialogBackground(dialogContext),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: Text(
-            'Assign role to user',
-            style: TextStyle(color: AppColors.textPrimary(dialogContext)),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: selectedUsername,
-                isExpanded: true,
-                dropdownColor: AppColors.dialogBackground(dialogContext),
-                decoration: InputDecoration(
-                  labelText: 'User',
-                  labelStyle: TextStyle(
-                    color: AppColors.textMuted(dialogContext),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppColors.outlineMuted(dialogContext),
-                    ),
-                  ),
-                  focusedBorder: const OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(12)),
-                    borderSide: BorderSide(color: Color(0xFF8B1A2C)),
-                  ),
-                ),
-                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
-                items: _members
-                    .map(
-                      (m) => DropdownMenuItem<String>(
-                        value: m['username']?.toString(),
-                        child: Text(
-                          '@${m['username'] ?? '-'}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) =>
-                    setDialogState(() => selectedUsername = value),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                value: selectedRole?.idRole,
-                isExpanded: true,
-                dropdownColor: AppColors.dialogBackground(dialogContext),
-                decoration: InputDecoration(
-                  labelText: 'Role',
-                  labelStyle: TextStyle(
-                    color: AppColors.textMuted(dialogContext),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: AppColors.outlineMuted(dialogContext),
-                    ),
-                  ),
-                  focusedBorder: const OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(12)),
-                    borderSide: BorderSide(color: Color(0xFF8B1A2C)),
-                  ),
-                ),
-                style: TextStyle(color: AppColors.textPrimary(dialogContext)),
-                items: _roles
-                    .map(
-                      (r) => DropdownMenuItem<int>(
-                        value: r.idRole,
-                        child: Text(r.name, overflow: TextOverflow.ellipsis),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setDialogState(
-                  () => selectedRole = _roles.firstWhere(
-                    (r) => r.idRole == value,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                'Cancel',
-                style: TextStyle(
-                  color: AppColors.textSecondary(dialogContext),
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (selectedUsername == null || selectedRole == null) return;
-                try {
-                  final api = Provider.of<AuthProvider>(
-                    this.context,
-                    listen: false,
-                  ).apiService;
-                  final beforeQueue = await api.getPendingOfflineChangesCount();
-                  await api.assignUserRole(
-                    groupId: widget.groupId,
-                    username: selectedUsername!,
-                    roleId: selectedRole!.idRole,
-                  );
-                  final afterQueue = await api.getPendingOfflineChangesCount();
-                  if (!dialogContext.mounted) return;
-                  Navigator.pop(dialogContext);
-                  this.context.showLatestSnackBar(
-                    SnackBar(
-                      content: Text(
-                        afterQueue > beforeQueue
-                            ? 'Priradenie roly je uložené offline.'
-                            : 'Rola bola priradená používateľovi',
-                      ),
-                      backgroundColor: afterQueue > beforeQueue
-                          ? const Color(0xFFEF6C00)
-                          : const Color(0xFF2E7D32),
-                    ),
-                  );
-                } catch (e) {
-                  if (!dialogContext.mounted) return;
-                  this.context.showLatestSnackBar(
-                    SnackBar(
-                      content: Text(e.toString().replaceAll('Exception: ', '')),
-                      backgroundColor: const Color(0xFF8B1A2C),
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF8B1A2C),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Assign'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _showRemoveRoleDialog() async {
@@ -720,6 +582,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
                       backgroundColor: afterQueue > beforeQueue
                           ? const Color(0xFFEF6C00)
                           : const Color(0xFF2E7D32),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                 } catch (e) {
@@ -770,11 +634,6 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
         backgroundColor: AppColors.dialogBackground(context),
         foregroundColor: AppColors.textPrimary(context),
         actions: [
-          IconButton(
-            onPressed: _showAssignRoleDialog,
-            tooltip: 'Assign role to user',
-            icon: const Icon(Icons.person_add_alt_1),
-          ),
           IconButton(
             onPressed: _showRemoveRoleDialog,
             tooltip: 'Remove role from user',

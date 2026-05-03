@@ -333,12 +333,24 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
                                       color: AppColors.textPrimary(context),
                                     ),
                                   ),
-                                  subtitle: Text(
-                                    '@${member['username'] ?? '-'}',
-                                    style: TextStyle(
-                                      color: AppColors.textMuted(context),
-                                      fontSize: 12,
-                                    ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '@${member['username'] ?? '-'}',
+                                        style: TextStyle(
+                                          color: AppColors.textMuted(context),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Klikni pre detaily a pridanie roly',
+                                        style: TextStyle(
+                                          color: AppColors.textDisabled(context),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   trailing: isRemoving
                                       ? const SizedBox(

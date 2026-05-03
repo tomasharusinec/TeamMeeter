@@ -14,7 +14,13 @@ import '../services/teammeeter_analytics.dart';
 import '../utils/snackbar_utils.dart';
 
 class ConversationsScreen extends StatefulWidget {
-  const ConversationsScreen({super.key});
+  const ConversationsScreen({
+    super.key,
+    this.chatTabSelected = false,
+  });
+
+  /// `true` keď je v Home záložka Chat vybrnutá ([IndexedStack] ju zobrazuje).
+  final bool chatTabSelected;
 
   @override
   State<ConversationsScreen> createState() => ConversationsScreenState();
@@ -24,11 +30,53 @@ class ConversationsScreenState extends State<ConversationsScreen> {
   bool _isLoading = true;
   bool _isCreatingConversation = false;
   List<Map<String, dynamic>> _conversations = [];
+  Timer? _pollWhileVisibleTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncPollTimerWithTabVisibility();
+    });
     _loadConversations(showLoadingIndicator: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant ConversationsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.chatTabSelected != oldWidget.chatTabSelected) {
+      _syncPollTimerWithTabVisibility();
+      if (widget.chatTabSelected) {
+        _loadConversations(showLoadingIndicator: false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollWhileVisibleTimer?.cancel();
+    super.dispose();
+  }
+
+  static const Duration _conversationListPollInterval = Duration(seconds: 22);
+
+  void _syncPollTimerWithTabVisibility() {
+    if (!mounted) return;
+    if (widget.chatTabSelected) {
+      _pollWhileVisibleTimer ??= Timer.periodic(
+        _conversationListPollInterval,
+        (_) async {
+          if (!mounted || !widget.chatTabSelected) return;
+          await _loadConversations(
+            showLoadingIndicator: false,
+            suppressErrorSnackBars: true,
+          );
+        },
+      );
+    } else {
+      _pollWhileVisibleTimer?.cancel();
+      _pollWhileVisibleTimer = null;
+    }
   }
 
   Future<void> _showCreateConversationDialog() async {
@@ -136,6 +184,16 @@ class ConversationsScreenState extends State<ConversationsScreen> {
                       if (!mounted) return;
                       Navigator.of(dialogContext).pop();
                       await _loadConversations(showLoadingIndicator: true);
+                      if (mounted && conversationId < 0) {
+                        context.showLatestSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Chat uložený offline. Po pripojení sa vytvorí na serveri a správy sa odošlú.',
+                            ),
+                            backgroundColor: Color(0xFFEF6C00),
+                          ),
+                        );
+                      }
                       await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ChatScreen(
@@ -149,6 +207,9 @@ class ConversationsScreenState extends State<ConversationsScreen> {
                           ),
                         ),
                       );
+                      if (mounted) {
+                        await _loadConversations(showLoadingIndicator: false);
+                      }
                     } catch (e) {
                       if (!mounted) return;
                       context.showLatestSnackBar(
@@ -188,11 +249,22 @@ class ConversationsScreenState extends State<ConversationsScreen> {
         .toList();
   }
 
-  /// Voliteľné obnovenie zoznamu (napr. po prepnutí na záložku Chat v HomeScreen).
-  Future<void> reloadConversations() =>
-      _loadConversations(showLoadingIndicator: false);
+  int? _coerceDmConversationListId(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
 
-  Future<void> _loadConversations({bool showLoadingIndicator = true}) async {
+  /// Voliteľné obnovenie zoznamu (napr. po prepnutí na záložku Chat v HomeScreen).
+  Future<void> reloadConversations() => _loadConversations(
+        showLoadingIndicator: false,
+        suppressErrorSnackBars: false,
+      );
+
+  Future<void> _loadConversations({
+    bool showLoadingIndicator = true,
+    bool suppressErrorSnackBars = false,
+  }) async {
     if (showLoadingIndicator && mounted) setState(() => _isLoading = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
@@ -207,19 +279,21 @@ class ConversationsScreenState extends State<ConversationsScreen> {
           .whereType<int>()
           .toSet();
       final directConversations = conversations.where((conversation) {
-        final conversationId = conversation['id'];
-        return conversationId is int && !groupConversationIds.contains(conversationId);
+        final cid = _coerceDmConversationListId(conversation['id']);
+        return cid != null && !groupConversationIds.contains(cid);
       }).toList();
       if (!mounted) return;
       setState(() => _conversations = directConversations);
     } catch (e) {
       if (!mounted) return;
-      context.showLatestSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: const Color(0xFF8B1A2C),
-        ),
-      );
+      if (!suppressErrorSnackBars) {
+        context.showLatestSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: const Color(0xFF8B1A2C),
+          ),
+        );
+      }
     } finally {
       if (showLoadingIndicator && mounted) {
         setState(() => _isLoading = false);
@@ -228,7 +302,7 @@ class ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Future<void> _showConversationActions(Map<String, dynamic> conversation) async {
-    final conversationId = conversation['id'] as int?;
+    final conversationId = _coerceDmConversationListId(conversation['id']);
     if (conversationId == null) return;
     final selectedAction = await showModalBottomSheet<String>(
       context: context,
@@ -336,7 +410,9 @@ class ConversationsScreenState extends State<ConversationsScreen> {
             itemCount: _conversations.length,
             itemBuilder: (context, index) {
               final conversation = _conversations[index];
-              final conversationId = conversation['id'] as int?;
+              final conversationId = _coerceDmConversationListId(
+                conversation['id'],
+              );
               final name = (conversation['name']?.toString().trim().isNotEmpty ??
                       false)
                   ? conversation['name'].toString().trim()
@@ -361,7 +437,9 @@ class ConversationsScreenState extends State<ConversationsScreen> {
                     style: TextStyle(color: AppColors.textPrimary(context)),
                   ),
                   subtitle: Text(
-                    'ID: ${conversationId ?? '-'}',
+                    conversationId != null && conversationId < 0
+                        ? 'Offline — čaká na synchronizáciu (#$conversationId)'
+                        : 'ID: ${conversationId ?? '-'}',
                     style: TextStyle(
                       color: AppColors.textSecondary(context),
                       fontSize: 12,
@@ -454,10 +532,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic>? _replyingTo;
   /// Skupinový chat: mazanie správ iných ako vlastné (Manager alebo oprávnenie delete_messages).
   bool _canDeleteOthersGroupMessages = false;
+  late int _effectiveConversationId;
 
   @override
   void initState() {
     super.initState();
+    _effectiveConversationId = widget.conversationId;
     _initializeChat();
     _startConnectionMaintenance();
   }
@@ -471,7 +551,36 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  int? _coerceConversationIdField(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  Future<void> _disconnectSocketQuietly() async {
+    try {
+      await _socket?.close();
+    } catch (_) {}
+    _socket = null;
+    if (mounted) {
+      setState(() => _isSocketConnected = false);
+    }
+  }
+
+  Future<bool> _reconcileConversationId() async {
+    final api = Provider.of<AuthProvider>(context, listen: false).apiService;
+    final resolved = await api.resolveConversationApiId(_effectiveConversationId);
+    if (!mounted) return false;
+    if (resolved != _effectiveConversationId && resolved > 0) {
+      setState(() => _effectiveConversationId = resolved);
+      await _disconnectSocketQuietly();
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _initializeChat() async {
+    await _reconcileConversationId();
     if (widget.groupId != null) {
       unawaited(_loadGroupMessageDeleteCapability());
     }
@@ -479,6 +588,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadParticipants();
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     await api.syncPendingChatOperations();
+    await _reconcileConversationId();
     await _loadMessages(showBlockingLoader: false);
     await _connectSocket();
   }
@@ -487,11 +597,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (showBlockingLoader && mounted) setState(() => _isLoading = true);
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      final messages = await api.getConversationMessages(widget.conversationId);
+      final messages = await api.getConversationMessages(_effectiveConversationId);
       if (!mounted) return;
       final merged = _mergeServerMessagesWithLocalPending(messages);
       setState(() => _messages = merged);
-      await api.saveConversationMessagesToCache(widget.conversationId, merged);
+      await api.saveConversationMessagesToCache(_effectiveConversationId, merged);
       _scrollToBottom();
     } catch (e) {
       if (!mounted || !showBlockingLoader) return;
@@ -510,7 +620,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final participants = await api.getConversationParticipants(
-        widget.conversationId,
+        _effectiveConversationId,
       );
       if (!mounted) return;
       setState(() => _participants = participants);
@@ -595,7 +705,8 @@ class _ChatScreenState extends State<ChatScreen> {
             return;
           }
           if (type == 'new_message' &&
-              data['conversation_id'] == widget.conversationId) {
+              _coerceConversationIdField(data['conversation_id']) ==
+                  _effectiveConversationId) {
             if (!mounted) return;
             setState(() {
               _messages.removeWhere(
@@ -615,7 +726,7 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             });
             final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-            api.saveConversationMessagesToCache(widget.conversationId, _messages);
+            api.saveConversationMessagesToCache(_effectiveConversationId, _messages);
             _scrollToBottom();
           }
         },
@@ -654,13 +765,17 @@ class _ChatScreenState extends State<ChatScreen> {
         final hadLocalPending =
             _messages.any((m) => m['is_local_pending'] == true);
         final syncedAny = await api.syncPendingChatOperations();
+        final idChanged = await _reconcileConversationId();
         // Frontu môže vyčistiť aj sync z iného miesta (napr. getGroups); vtedy
         // syncedAny je false ale lokálne pending ešte treba zlúčiť so serverom.
-        if (mounted && (syncedAny || hadLocalPending)) {
+        if (mounted && (syncedAny || hadLocalPending || idChanged)) {
           await _loadMessages(showBlockingLoader: false);
           if (widget.groupId != null) {
             unawaited(_loadGroupMessageDeleteCapability());
           }
+        }
+        if (mounted && !_isSocketConnected) {
+          await _connectSocket();
         }
       } catch (_) {
         // Keep trying on next tick without breaking chat UI.
@@ -708,7 +823,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   listen: false,
                 ).apiService;
                 await api.addConversationParticipant(
-                  conversationId: widget.conversationId,
+                  conversationId: _effectiveConversationId,
                   username: username,
                 );
                 if (!mounted) return;
@@ -800,7 +915,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _socket!.add(
           jsonEncode({
             'type': 'send_message_with_file',
-            'conversation_id': widget.conversationId,
+            'conversation_id': _effectiveConversationId,
             'text': text,
             'file_name': pureName,
             'file_extension': extension,
@@ -811,7 +926,7 @@ class _ChatScreenState extends State<ChatScreen> {
       } else {
         final api = Provider.of<AuthProvider>(context, listen: false).apiService;
         await api.queueOfflineConversationFileMessage(
-          conversationId: widget.conversationId,
+          conversationId: _effectiveConversationId,
           text: text,
           filePath: filePath,
           fileName: pureName,
@@ -835,7 +950,7 @@ class _ChatScreenState extends State<ChatScreen> {
       try {
         final api = Provider.of<AuthProvider>(context, listen: false).apiService;
         await api.queueOfflineConversationFileMessage(
-          conversationId: widget.conversationId,
+          conversationId: _effectiveConversationId,
           text: text,
           filePath: filePath,
           fileName: pureName,
@@ -890,7 +1005,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _socket!.add(
           jsonEncode({
             'type': 'send_message',
-            'conversation_id': widget.conversationId,
+            'conversation_id': _effectiveConversationId,
             'text': payloadText,
           }),
         );
@@ -898,7 +1013,7 @@ class _ChatScreenState extends State<ChatScreen> {
       } else {
         final api = Provider.of<AuthProvider>(context, listen: false).apiService;
         await api.queueOfflineConversationMessage(
-          conversationId: widget.conversationId,
+          conversationId: _effectiveConversationId,
           text: payloadText,
         );
         _addLocalPendingMessage(payloadText);
@@ -915,7 +1030,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       await api.queueOfflineConversationMessage(
-        conversationId: widget.conversationId,
+        conversationId: _effectiveConversationId,
         text: payloadText,
       );
       _addLocalPendingMessage(payloadText);
@@ -933,7 +1048,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (shouldLogChatSend) {
         unawaited(
           TeamMeeterAnalytics.instance.logChatMessageSend(
-            conversationId: widget.conversationId,
+            conversationId: _effectiveConversationId,
             socketConnected: usedSocketTransport,
             isReply: isReply,
           ),
@@ -953,7 +1068,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final user = auth.user;
     final localMessage = <String, dynamic>{
       'id': -DateTime.now().millisecondsSinceEpoch,
-      'conversation_id': widget.conversationId,
+      'conversation_id': _effectiveConversationId,
       'sender_id': user?.idRegistration,
       'sender_username': user?.username ?? 'me',
       'text': text,
@@ -961,7 +1076,7 @@ class _ChatScreenState extends State<ChatScreen> {
     };
     setState(() => _messages.add(localMessage));
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-    api.saveConversationMessagesToCache(widget.conversationId, _messages);
+    api.saveConversationMessagesToCache(_effectiveConversationId, _messages);
     _scrollToBottom();
   }
 
@@ -974,7 +1089,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final user = auth.user;
     final localMessage = <String, dynamic>{
       'id': -DateTime.now().millisecondsSinceEpoch,
-      'conversation_id': widget.conversationId,
+      'conversation_id': _effectiveConversationId,
       'sender_id': user?.idRegistration,
       'sender_username': user?.username ?? 'me',
       'text': text,
@@ -987,7 +1102,7 @@ class _ChatScreenState extends State<ChatScreen> {
     };
     setState(() => _messages.add(localMessage));
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-    api.saveConversationMessagesToCache(widget.conversationId, _messages);
+    api.saveConversationMessagesToCache(_effectiveConversationId, _messages);
     _scrollToBottom();
   }
 
@@ -1218,13 +1333,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (messageId == null || (messageId is num && messageId.toInt() <= 0)) {
       setState(() => _messages.remove(message));
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      api.saveConversationMessagesToCache(widget.conversationId, _messages);
+      api.saveConversationMessagesToCache(_effectiveConversationId, _messages);
       return;
     }
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       final deletedOnServer = await api.deleteConversationMessage(
-        conversationId: widget.conversationId,
+        conversationId: _effectiveConversationId,
         messageId: (messageId as num).toInt(),
       );
       if (!mounted) return;
@@ -1232,7 +1347,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.removeWhere((m) => m['id'] == messageId);
         if (_replyingTo?['id'] == messageId) _replyingTo = null;
       });
-      await api.saveConversationMessagesToCache(widget.conversationId, _messages);
+      await api.saveConversationMessagesToCache(_effectiveConversationId, _messages);
       if (!deletedOnServer && mounted) {
         context.showLatestSnackBar(
           const SnackBar(
@@ -1295,7 +1410,18 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: appBarBg,
         actions: [
           IconButton(
-            onPressed: _addParticipantDialog,
+            onPressed: _effectiveConversationId < 0
+                ? () {
+                    context.showLatestSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Účastníkov pridáš po synchronizácii chatu na server (internet).',
+                        ),
+                        backgroundColor: Color(0xFFEF6C00),
+                      ),
+                    );
+                  }
+                : _addParticipantDialog,
             tooltip: 'Pridať účastníka',
             icon: const Icon(Icons.person_add_alt_1),
           ),

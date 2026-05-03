@@ -12,14 +12,27 @@ class Role {
   });
 
   factory Role.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id_role'];
+    final idRole = rawId is int
+        ? rawId
+        : rawId is num
+            ? rawId.toInt()
+            : int.tryParse(rawId?.toString() ?? '') ?? 0;
+    final nameRaw = json['name'];
+    final name = nameRaw?.toString() ?? '';
+    final colorRaw = json['color'];
+    final List<String> perms;
+    final plist = json['permissions'];
+    if (plist is List) {
+      perms = plist.map((p) => p.toString()).toList();
+    } else {
+      perms = const [];
+    }
     return Role(
-      idRole: json['id_role'],
-      name: json['name'],
-      color: json['color'],
-      permissions: (json['permissions'] as List?)
-              ?.map((p) => p.toString())
-              .toList() ??
-          const [],
+      idRole: idRole,
+      name: name,
+      color: colorRaw?.toString(),
+      permissions: perms,
     );
   }
 }

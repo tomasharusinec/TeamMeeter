@@ -110,6 +110,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _runOfflineSyncInBackground();
       _refreshNotificationIndicator();
       _syncPushTokenSilently();
+      if (_currentNavIndex == 2) {
+        unawaited(
+          _conversationsScreenKey.currentState?.reloadConversations() ??
+              Future.value(),
+        );
+      }
     }
   }
 
@@ -236,7 +242,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await showDialog<void>(
           context: context,
           builder: (_) =>
-              ActivityDetailDialog(activity: activity, onDeleted: _loadData),
+              ActivityDetailDialog(
+                activity: activity,
+                onDeleted: _loadData,
+                onUpdated: _loadData,
+              ),
         );
         if (!mounted) return true;
         await _loadData();
@@ -840,7 +850,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     showDialog(
       context: context,
       builder: (context) =>
-          ActivityDetailDialog(activity: activity, onDeleted: _loadData),
+          ActivityDetailDialog(
+                activity: activity,
+                onDeleted: _loadData,
+                onUpdated: _loadData,
+              ),
     );
   }
 
@@ -947,7 +961,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildChatView() {
-    return ConversationsScreen(key: _conversationsScreenKey);
+    return ConversationsScreen(
+      key: _conversationsScreenKey,
+      chatTabSelected: _currentNavIndex == 2,
+    );
   }
 
   Widget _buildGroupsView() {
@@ -1720,33 +1737,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ),
                         );
                         if (!mounted) return;
-                        if (generateQr &&
-                            qrCode != null &&
-                            qrCode.isNotEmpty &&
-                            !queued) {
-                          final navigator = Navigator.of(this.context);
-                          this.context.showLatestSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                'Group created. QR code is ready.',
-                              ),
-                              backgroundColor: const Color(0xFF8B1A2C),
-                              action: SnackBarAction(
-                                label: 'Show QR',
-                                textColor: Colors.white,
-                                onPressed: () {
-                                  navigator.push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => _GroupQrCodeScreen(
-                                        qrCode: qrCode,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          );
-                        }
                         if (queued) {
                           this.context.showLatestSnackBar(
                             const SnackBar(
@@ -1754,8 +1744,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 'Skupina bola uložená offline. Po pripojení sa zosynchronizuje.',
                               ),
                               backgroundColor: Color(0xFFEF6C00),
+                              duration: Duration(seconds: 3),
+                              behavior: SnackBarBehavior.floating,
                             ),
                           );
+                        } else {
+                          final navigator = Navigator.of(this.context);
+                          final openQr = generateQr &&
+                              qrCode != null &&
+                              qrCode.isNotEmpty;
+                          this.context.showLatestSnackBar(
+                            SnackBar(
+                              content: const Text('Skupina bola vytvorená.'),
+                              backgroundColor: Color(0xFF2E7D32),
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          if (openQr) {
+                            unawaited(
+                              navigator.push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      _GroupQrCodeScreen(qrCode: qrCode),
+                                ),
+                              ),
+                            );
+                          }
                         }
                         await _loadGroups(showError: false);
                       } catch (e) {

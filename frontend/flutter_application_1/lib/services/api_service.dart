@@ -11,7 +11,7 @@ import '../models/activity.dart';
 import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.123:5000';
+  static const String baseUrl = 'http://192.168.1.105:5000';
   static const String _activityCacheKey = 'cached_activities_v1';
   static const String _activityOpsKey = 'pending_activity_ops_v1';
   static const String _activityTempIdKey = 'activity_temp_id_seed_v1';
@@ -31,6 +31,9 @@ class ApiService {
   static const String _groupMembersCachePrefix = 'cached_group_members_v1_';
   static const String _groupRolesCachePrefix = 'cached_group_roles_v1_';
   static const String _groupIconBytesPrefix = 'cached_group_icon_bytes_v1_';
+  static const String _conversationTempIdKey = 'conversation_temp_id_seed_v1';
+  static const String _conversationIdMappingKey =
+      'conversation_id_mapping_v1';
 
   String? _token;
   String _cacheNamespace = 'global';
@@ -68,10 +71,123 @@ class ApiService {
   }
 
   bool _isConnectivityError(Object error) {
+    final lower = error.toString().toLowerCase();
     return error is SocketException ||
         error is http.ClientException ||
-        error.toString().toLowerCase().contains('failed host lookup') ||
-        error.toString().toLowerCase().contains('connection refused');
+        error is TimeoutException ||
+        lower.contains('failed host lookup') ||
+        lower.contains('connection refused') ||
+        lower.contains('timed out') ||
+        lower.contains('connection reset');
+  }
+
+  int? _parseIdFromJson(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString());
+  }
+
+  /// Po synchronizácii offline konverzie vráti reálne ID servera, inak pôvodné [conversationId].
+  Future<int> resolveConversationApiId(int conversationId) async {
+    if (conversationId >= 0) return conversationId;
+    final m = await _loadConversationIdMapping();
+    final serverId = m[conversationId];
+    if (serverId != null && serverId > 0) return serverId;
+    return conversationId;
+  }
+
+  Future<int> _nextTempConversationId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _namespacedKey(_conversationTempIdKey);
+    final seed = prefs.getInt(key) ?? -5000;
+    await prefs.setInt(key, seed - 1);
+    return seed;
+  }
+
+  Future<Map<int, int>> _loadConversationIdMapping() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_namespacedKey(_conversationIdMappingKey));
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final parsed = Map<String, dynamic>.from(jsonDecode(raw));
+      final out = <int, int>{};
+      parsed.forEach((k, v) {
+        final from = int.tryParse(k);
+        final to = v is int ? v : (v is num ? v.toInt() : int.tryParse(v?.toString() ?? ''));
+        if (from != null && to != null) out[from] = to;
+      });
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _persistConversationIdMapping(Map<int, int> mapping) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mapping.isEmpty) {
+      await prefs.remove(_namespacedKey(_conversationIdMappingKey));
+      return;
+    }
+    final payload = <String, int>{
+      for (final e in mapping.entries) e.key.toString(): e.value,
+    };
+    await prefs.setString(
+      _namespacedKey(_conversationIdMappingKey),
+      jsonEncode(payload),
+    );
+  }
+
+  Future<void> _mergeConversationIdMapping(Map<int, int> slice) async {
+    if (slice.isEmpty) return;
+    final merged = {...await _loadConversationIdMapping(), ...slice};
+    await _persistConversationIdMapping(merged);
+  }
+
+  List<Map<String, dynamic>> _remapConversationIdsInChatOps(
+    List<Map<String, dynamic>> ops,
+    Map<int, int> idMapping,
+  ) {
+    if (idMapping.isEmpty) return ops;
+    return ops.map((op) {
+      final cid = _parseIdFromJson(op['conversation_id']);
+      if (cid == null || !idMapping.containsKey(cid)) return op;
+      return {
+        ...Map<String, dynamic>.from(op),
+        'conversation_id': idMapping[cid],
+      };
+    }).toList();
+  }
+
+  Future<void> _migrateConversationMessagesPrefsForRemap(Map<int, int> slice) async {
+    if (slice.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    for (final entry in slice.entries) {
+      final tempId = entry.key;
+      final serverId = entry.value;
+      if (tempId >= 0 || serverId <= 0 || tempId == serverId) continue;
+      final messages = await _loadCachedConversationMessages(tempId);
+      if (messages.isNotEmpty) {
+        await saveConversationMessagesToCache(serverId, messages);
+      }
+      await prefs.remove(
+        _namespacedKey('$_conversationMessagesCachePrefix$tempId'),
+      );
+    }
+    final conversations = await _loadCachedConversations();
+    final updated = conversations.map((c) {
+      final cid = _parseIdFromJson(c['id']);
+      final serverId = cid != null ? slice[cid] : null;
+      if (serverId != null) {
+        return {
+          ...Map<String, dynamic>.from(c),
+          'id': serverId,
+          'is_local_only': false,
+        };
+      }
+      return Map<String, dynamic>.from(c);
+    }).toList();
+    await _saveCachedConversations(updated);
   }
 
   Future<bool> isServerReachable() async {
@@ -143,6 +259,90 @@ class ApiService {
     final ops = await _loadPendingActivityOps();
     ops.add(op);
     await _savePendingActivityOps(ops);
+  }
+
+  /// Nahradí existujúce čakajúce `update_activity` pre rovnaké ID (posledná verzia víťazí).
+  Future<void> _queueActivityUpdateReplacingPending(
+    Map<String, dynamic> op,
+  ) async {
+    final id = op['activity_id'];
+    final ops = await _loadPendingActivityOps();
+    ops.removeWhere(
+      (o) => o['type']?.toString() == 'update_activity' && o['activity_id'] == id,
+    );
+    ops.add(op);
+    await _savePendingActivityOps(ops);
+  }
+
+  bool _rolesGrantPermission({
+    required List<Map<String, dynamic>> userRoleRows,
+    required List<Role> allRoles,
+    required String permission,
+  }) {
+    int? pid(dynamic raw) {
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      return int.tryParse(raw?.toString() ?? '');
+    }
+
+    final myRoleIds =
+        userRoleRows.map((r) => pid(r['id_role'])).whereType<int>().toSet();
+    for (final role in allRoles) {
+      if (!myRoleIds.contains(role.idRole)) continue;
+      if (role.name == 'Manager') return true;
+      if (role.permissions.contains(permission)) return true;
+    }
+    return false;
+  }
+
+  Future<bool> userHasPermissionInGroup({
+    required int groupId,
+    required int userId,
+    required String permission,
+  }) async {
+    int gid = groupId;
+    try {
+      if (groupId < 0) {
+        gid = await _resolveServerGroupId(groupId);
+      }
+    } catch (_) {
+      return false;
+    }
+    try {
+      final myRows =
+          await getUserRolesInGroup(groupId: gid, userId: userId);
+      final allRoles = await getGroupRolesModel(groupId);
+      return _rolesGrantPermission(
+        userRoleRows: myRows,
+        allRoles: allRoles,
+        permission: permission,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Tvorca môže vždy; v skupine inak právo `edit_activity` (rovnako ako PUT na backende).
+  Future<bool> canUserFullyEditActivity({
+    required Activity activity,
+    required int userId,
+    required String username,
+  }) async {
+    if (activity.idActivity < 0 || activity.isLocalOnly) {
+      return true;
+    }
+    final unameLower = username.toLowerCase().trim();
+    final creatorUsername = activity.creatorUsername?.toLowerCase().trim();
+    final isCreator =
+        creatorUsername != null && creatorUsername == unameLower;
+    if (activity.groupId == null) return isCreator;
+    if (isCreator) return true;
+    final gid = activity.groupId!;
+    return userHasPermissionInGroup(
+      groupId: gid,
+      userId: userId,
+      permission: 'edit_activity',
+    );
   }
 
   Future<void> _upsertCachedActivity(Activity activity) async {
@@ -558,6 +758,7 @@ class ApiService {
       final idRaw = conversation['id'];
       if (idRaw is! num) continue;
       final conversationId = idRaw.toInt();
+      if (conversationId <= 0) continue;
       try {
         final response = await http
             .get(
@@ -617,10 +818,69 @@ class ApiService {
   }
 
   Future<bool> syncPendingChatOperations() async {
-    final pending = await _loadPendingChatOps();
+    var pending = List<Map<String, dynamic>>.from(await _loadPendingChatOps());
     if (pending.isEmpty || _token == null || _token!.isEmpty) return false;
     final reachable = await isServerReachable();
     if (!reachable) return false;
+
+    final convMapping = await _loadConversationIdMapping();
+    pending = _remapConversationIdsInChatOps(pending, convMapping);
+
+    var syncedAny = false;
+    for (;;) {
+      final createIdx = pending.indexWhere(
+        (o) => o['type']?.toString() == 'create_conversation',
+      );
+      if (createIdx < 0) break;
+      final op = pending[createIdx];
+      final tempId = _parseIdFromJson(op['temp_id']);
+      if (tempId == null) {
+        pending.removeAt(createIdx);
+        continue;
+      }
+      final name = (op['name']?.toString() ?? 'Chat').trim();
+      final rawParts = op['participant_usernames'];
+      final participants = rawParts is List
+          ? rawParts
+              .map((e) => e.toString().trim())
+              .where((s) => s.isNotEmpty)
+              .toList()
+          : <String>[];
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$baseUrl/conversations/'),
+              headers: _headers,
+              body: jsonEncode({
+                'name': name.isEmpty ? 'Chat' : name,
+                'participant_usernames': participants,
+              }),
+            )
+            .timeout(const Duration(seconds: 8));
+        if (response.statusCode == 201) {
+          final data = Map<String, dynamic>.from(jsonDecode(response.body));
+          final serverId = _parseIdFromJson(data['conversation_id']);
+          if (serverId != null && serverId > 0) {
+            pending.removeAt(createIdx);
+            await _mergeConversationIdMapping({tempId: serverId});
+            pending = _remapConversationIdsInChatOps(
+              pending,
+              {tempId: serverId},
+            );
+            await _migrateConversationMessagesPrefsForRemap({tempId: serverId});
+            await _savePendingChatOps(pending);
+            syncedAny = true;
+            continue;
+          }
+        }
+        break;
+      } catch (e) {
+        if (_isConnectivityError(e)) {
+          return syncedAny;
+        }
+        break;
+      }
+    }
 
     final wsUrl = Uri.parse(
       baseUrl
@@ -631,7 +891,6 @@ class ApiService {
     WebSocket? socket;
     StreamSubscription? subscription;
     Completer<void>? awaitingFileCompleter;
-    var syncedAny = false;
     try {
       socket = await WebSocket.connect(
         wsUrl.toString(),
@@ -1592,6 +1851,15 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getConversation(int conversationId) async {
+    if (conversationId < 0) {
+      final list = await _loadCachedConversations();
+      for (final c in list) {
+        if (_parseIdFromJson(c['id']) == conversationId) {
+          return Map<String, dynamic>.from(c);
+        }
+      }
+      return {'id': conversationId, 'name': 'Chat'};
+    }
     final response = await http.get(
       Uri.parse('$baseUrl/conversations/$conversationId'),
       headers: _headers,
@@ -1613,9 +1881,23 @@ class ApiService {
         final conversations = List<Map<String, dynamic>>.from(
           data['conversations'] ?? const [],
         );
-        await _saveCachedConversations(conversations);
+        final cached = await _loadCachedConversations();
+        final offlineOnly = cached.where((c) {
+          final id = _parseIdFromJson(c['id']);
+          return id != null && id < 0;
+        }).map((c) => Map<String, dynamic>.from(c)).toList();
+        final merged = [
+          ...conversations.map((c) => Map<String, dynamic>.from(c)),
+          for (final o in offlineOnly)
+            if (!conversations.any(
+              (sc) =>
+                  _parseIdFromJson(sc['id']) == _parseIdFromJson(o['id']),
+            ))
+              o,
+        ];
+        await _saveCachedConversations(merged);
         unawaited(_prefetchLastMessagesForConversations(conversations));
-        return conversations;
+        return merged;
       }
       throw _buildApiException(response, 'Nepodarilo sa načítať konverzácie');
     } catch (e) {
@@ -1627,10 +1909,15 @@ class ApiService {
   Future<List<Map<String, dynamic>>> getConversationMessages(
     int conversationId,
   ) async {
+    final resolvedId = await resolveConversationApiId(conversationId);
+    if (resolvedId < 0) {
+      final cached = await _loadCachedConversationMessages(conversationId);
+      return _lastMessages(cached);
+    }
     try {
       final response = await http
           .get(
-            Uri.parse('$baseUrl/conversations/$conversationId/messages'),
+            Uri.parse('$baseUrl/conversations/$resolvedId/messages'),
             headers: _headers,
           )
           .timeout(const Duration(seconds: 8));
@@ -1640,7 +1927,7 @@ class ApiService {
           data['messages'] ?? const [],
         );
         await saveConversationMessagesToCache(
-          conversationId,
+          resolvedId,
           _lastMessages(messages),
         );
         return messages;
@@ -1648,7 +1935,10 @@ class ApiService {
       throw _buildApiException(response, 'Nepodarilo sa načítať správy');
     } catch (e) {
       if (!_isConnectivityError(e)) rethrow;
-      final cached = await _loadCachedConversationMessages(conversationId);
+      var cached = await _loadCachedConversationMessages(resolvedId);
+      if (cached.isEmpty && resolvedId != conversationId) {
+        cached = await _loadCachedConversationMessages(conversationId);
+      }
       return _lastMessages(cached);
     }
   }
@@ -1657,26 +1947,55 @@ class ApiService {
     required String name,
     required List<String> participantUsernames,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/conversations/'),
-      headers: _headers,
-      body: jsonEncode({
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/conversations/'),
+            headers: _headers,
+            body: jsonEncode({
+              'name': name,
+              'participant_usernames': participantUsernames,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode == 201) {
+        final data = Map<String, dynamic>.from(jsonDecode(response.body));
+        return (data['conversation_id'] as num).toInt();
+      }
+      throw _buildApiException(response, 'Nepodarilo sa vytvoriť konverzáciu');
+    } catch (e) {
+      if (!_isConnectivityError(e)) rethrow;
+      final tempId = await _nextTempConversationId();
+      final ops = await _loadPendingChatOps();
+      ops.add({
+        'type': 'create_conversation',
+        'temp_id': tempId,
         'name': name,
         'participant_usernames': participantUsernames,
-      }),
-    );
-    if (response.statusCode == 201) {
-      final data = Map<String, dynamic>.from(jsonDecode(response.body));
-      return (data['conversation_id'] as num).toInt();
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      await _savePendingChatOps(ops);
+
+      final convs = await _loadCachedConversations();
+      convs.add({
+        'id': tempId,
+        'name': name,
+        'is_local_only': true,
+      });
+      await _saveCachedConversations(convs);
+      return tempId;
     }
-    throw _buildApiException(response, 'Nepodarilo sa vytvoriť konverzáciu');
   }
 
   Future<List<Map<String, dynamic>>> getConversationParticipants(
     int conversationId,
   ) async {
+    final cid = await resolveConversationApiId(conversationId);
+    if (cid < 0) {
+      return [];
+    }
     final response = await http.get(
-      Uri.parse('$baseUrl/conversations/$conversationId/participants'),
+      Uri.parse('$baseUrl/conversations/$cid/participants'),
       headers: _headers,
     );
     if (response.statusCode == 200) {
@@ -1690,8 +2009,14 @@ class ApiService {
     required int conversationId,
     required String username,
   }) async {
+    final cid = await resolveConversationApiId(conversationId);
+    if (cid < 0) {
+      throw Exception(
+        'Konverzia ešte nie je na serveri. Po pripojení k internetu počkaj na synchronizáciu.',
+      );
+    }
     final response = await http.post(
-      Uri.parse('$baseUrl/conversations/$conversationId/participants'),
+      Uri.parse('$baseUrl/conversations/$cid/participants'),
       headers: _headers,
       body: jsonEncode({'username': username}),
     );
@@ -1702,6 +2027,21 @@ class ApiService {
 
   /// Returns `true` if the server confirmed delete, `false` if queued for offline sync.
   Future<bool> deleteConversation(int conversationId) async {
+    if (conversationId < 0) {
+      var ops = await _loadPendingChatOps();
+      ops = ops.where((op) {
+        final type = op['type']?.toString();
+        if (type == 'create_conversation' &&
+            _parseIdFromJson(op['temp_id']) == conversationId) {
+          return false;
+        }
+        final cid = _parseIdFromJson(op['conversation_id']);
+        return cid != conversationId;
+      }).toList();
+      await _savePendingChatOps(ops);
+      await _removeCachedConversation(conversationId);
+      return true;
+    }
     try {
       final response = await http
           .delete(
@@ -1715,7 +2055,7 @@ class ApiService {
       await _removeCachedConversation(conversationId);
       return true;
     } catch (e) {
-      if (!_isConnectivityError(e) && e is! TimeoutException) rethrow;
+      if (!_isConnectivityError(e)) rethrow;
       final ops = await _loadPendingChatOps();
       final filtered = ops.where((op) {
         final cidRaw = op['conversation_id'];
@@ -1756,7 +2096,7 @@ class ApiService {
       }
       throw _buildApiException(response, 'Nepodarilo sa zmazať správu');
     } catch (e) {
-      if (!_isConnectivityError(e) && e is! TimeoutException) rethrow;
+      if (!_isConnectivityError(e)) rethrow;
       final ops = await _loadPendingChatOps();
       ops.add({
         'type': 'delete_message',
@@ -1991,13 +2331,14 @@ class ApiService {
     throw _buildApiException(response, 'Nepodarilo sa načítať detail aktivity');
   }
 
-  Future<void> deleteActivity(int activityId) async {
+  /// `true` ak server potvrdil zmazanie, `false` ak je požiadavka vo fronte (offline).
+  Future<bool> deleteActivity(int activityId) async {
     if (activityId < 0) {
       final ops = await _loadPendingActivityOps();
       ops.removeWhere((op) => op['temp_id'] == activityId);
       await _savePendingActivityOps(ops);
       await _removeCachedActivity(activityId);
-      return;
+      return true;
     }
     try {
       final response = await http
@@ -2010,6 +2351,7 @@ class ApiService {
         throw _buildApiException(response, 'Nepodarilo sa zmazať aktivitu');
       }
       await _removeCachedActivity(activityId);
+      return true;
     } catch (e) {
       if (!_isConnectivityError(e)) rethrow;
       await _queueActivityOperation({
@@ -2020,6 +2362,7 @@ class ApiService {
       await _saveCachedActivities(
         cached.where((a) => a.idActivity != activityId).toList(),
       );
+      return false;
     }
   }
 
@@ -2057,6 +2400,101 @@ class ApiService {
       return a.copyWith(status: status, hasPendingSync: true);
     }).toList();
     await _saveCachedActivities(updated);
+  }
+
+  /// Úprava polí aktivity (PUT ako na serveri). Pri offline zaradí [`update_activity`].
+  /// Vráti `true` ak server odpovedal 200.
+  Future<bool> updateActivity({
+    required int activityId,
+    required String name,
+    String description = '',
+    String? deadline,
+    required String status,
+  }) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw ArgumentError('Názov aktivity nesmie byť prázdny');
+    }
+    final body = <String, dynamic>{
+      'name': trimmedName,
+      'status': status,
+      'description': description.trim(),
+      if (deadline != null && deadline.trim().isNotEmpty)
+        'deadline': deadline.trim(),
+    };
+
+    Future<void> patchCacheAndMaybeQueue({required bool queued}) async {
+      final cached = await _loadCachedActivities();
+      final idx = cached.indexWhere((a) => a.idActivity == activityId);
+      if (idx >= 0) {
+        cached[idx] = cached[idx].copyWith(
+          name: trimmedName,
+          description:
+              description.trim().isEmpty ? null : description.trim(),
+          deadline: deadline != null && deadline.trim().isNotEmpty
+              ? deadline.trim()
+              : cached[idx].deadline,
+          status: status,
+          hasPendingSync: queued,
+        );
+      } else {
+        cached.add(Activity(
+          idActivity: activityId,
+          name: trimmedName,
+          description:
+              description.trim().isEmpty ? null : description.trim(),
+          deadline: deadline != null && deadline.trim().isNotEmpty
+              ? deadline.trim()
+              : null,
+          status: status,
+          hasPendingSync: queued,
+          isLocalOnly: activityId < 0,
+        ));
+      }
+      await _saveCachedActivities(cached);
+    }
+
+    if (activityId < 0) {
+      await patchCacheAndMaybeQueue(queued: true);
+      await _queueActivityUpdateReplacingPending({
+        'type': 'update_activity',
+        'activity_id': activityId,
+        'name': trimmedName,
+        'status': status,
+        'description': description.trim(),
+        if (deadline != null && deadline.trim().isNotEmpty)
+          'deadline': deadline.trim(),
+      });
+      return false;
+    }
+
+    try {
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/activities/$activityId'),
+            headers: _headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        throw _buildApiException(response, 'Nepodarilo sa upraviť aktivitu');
+      }
+      await patchCacheAndMaybeQueue(queued: false);
+      return true;
+    } catch (e) {
+      if (!_isConnectivityError(e)) rethrow;
+      await patchCacheAndMaybeQueue(queued: true);
+      await _queueActivityUpdateReplacingPending({
+        'type': 'update_activity',
+        'activity_id': activityId,
+        'name': trimmedName,
+        'status': status,
+        'description': description.trim(),
+        if (deadline != null && deadline.trim().isNotEmpty)
+          'deadline': deadline.trim(),
+      });
+      return false;
+    }
   }
 
   Future<bool> syncPendingActivityOperations() async {
@@ -2144,6 +2582,46 @@ class ApiService {
                 Uri.parse('$baseUrl/activities/$resolvedId'),
                 headers: _headers,
                 body: jsonEncode({'status': op['status']}),
+              )
+              .timeout(const Duration(seconds: 8));
+          if (response.statusCode == 200) {
+            syncedAny = true;
+            continue;
+          }
+          if (response.statusCode == 404) {
+            syncedAny = true;
+            continue;
+          }
+          remaining.add(op);
+          continue;
+        }
+
+        if (type == 'update_activity') {
+          final raw = op['activity_id'];
+          final rawId = raw is int
+              ? raw
+              : (raw is num ? raw.toInt() : int.tryParse('$raw') ?? 0);
+          final resolvedId = idMapping[rawId] ?? rawId;
+          if (resolvedId < 0) {
+            remaining.add(op);
+            continue;
+          }
+          final body = <String, dynamic>{
+            'name': op['name'],
+            'status': op['status'],
+            'description':
+                op['description'] ?? '',
+          };
+          final d = op['deadline'];
+          if (d != null &&
+              (d is String ? d.trim().isNotEmpty : '$d'.trim().isNotEmpty)) {
+            body['deadline'] = d is String ? d.trim() : '$d'.trim();
+          }
+          final response = await http
+              .put(
+                Uri.parse('$baseUrl/activities/$resolvedId'),
+                headers: _headers,
+                body: jsonEncode(body),
               )
               .timeout(const Duration(seconds: 8));
           if (response.statusCode == 200) {
