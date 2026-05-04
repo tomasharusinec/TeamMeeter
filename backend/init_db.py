@@ -2,6 +2,9 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 
+
+# Function below was generated using AI (Gemini)
+# Migrates activity.deadline column to TIMESTAMPTZ when older schema used plain timestamp.
 def _migrate_activity_deadline_column(cursor, conn):
     cursor.execute("""
         SELECT data_type
@@ -31,6 +34,8 @@ def _migrate_activity_deadline_column(cursor, conn):
     print("Migration finished: activity.deadline is TIMESTAMPTZ.")
 
 
+# Function below was generated using AI (Gemini)
+# Ensures activity.status exists and backfills NULL values to the default todo state.
 def _migrate_activity_status_column(cursor, conn):
     cursor.execute("""
         SELECT data_type
@@ -58,6 +63,9 @@ def _migrate_activity_status_column(cursor, conn):
     conn.commit()
     print("Migration finished: activity.status added.")
 
+
+# Function below was generated using AI (Gemini)
+# Adds or repairs group.capacity with positive default and CHECK constraint.
 def _migrate_group_capacity_column(cursor, conn):
     cursor.execute("""
         SELECT 1
@@ -89,6 +97,8 @@ def _migrate_group_capacity_column(cursor, conn):
     print('Migration finished: "group".capacity added.')
 
 
+# Function below was generated using AI (Gemini)
+# Creates partial index on activity.deadline to speed expiry worker queries.
 def _ensure_activity_deadline_expiry_index(cursor, conn):
     """Rýchle vyhľadanie `deadline <= now` pre worker / sync_pull (bez full scan tabuľky)."""
     cursor.execute(
@@ -101,6 +111,8 @@ def _ensure_activity_deadline_expiry_index(cursor, conn):
     conn.commit()
 
 
+# Function below was generated using AI (Gemini)
+# Creates extended notification subtype tables if they are missing on older databases.
 def _migrate_notification_tables(cursor, conn):
     cursor.execute(
         """
@@ -153,6 +165,8 @@ def _migrate_notification_tables(cursor, conn):
     conn.commit()
 
 
+# Function below was generated using AI (Gemini)
+# Ensures user_push_token table and supporting index exist for FCM token storage.
 def _migrate_push_token_table(cursor, conn):
     cursor.execute(
         """
@@ -176,6 +190,8 @@ def _migrate_push_token_table(cursor, conn):
     conn.commit()
 
 
+# Function below was generated using AI (Gemini)
+# Adds UNIQUE index on push token when legacy installs created the table without it.
 def _ensure_user_push_token_token_unique(cursor, conn):
     """
     Staršie inštalácie mohli mať user_push_token bez UNIQUE(token).

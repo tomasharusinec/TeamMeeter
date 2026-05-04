@@ -295,6 +295,8 @@ def handle_send_message(ws, conn, user_id, username, data):
         ws.send(json_payload)
 
 
+# Function below was generated using AI (Gemini)
+# Loads sender username from DB for push previews; returns a generic label on failure.
 def sender_username(conn, sender_id: int) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -307,6 +309,8 @@ def sender_username(conn, sender_id: int) -> str:
     return "Pouzivatel"
 
 
+# Function below was generated using AI (Gemini)
+# Returns a short decrypted plaintext preview of a message for notifications.
 def text_preview(conn, message_id: int) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -322,6 +326,8 @@ def text_preview(conn, message_id: int) -> str:
     return "Poslal(a) novu spravu"
 
 
+# Function below was generated using AI (Gemini)
+# Resolves human-readable conversation title and optional linked group id for pushes.
 def conversation_display_and_group(
     conn, conversation_id: int
 ) -> Tuple[str, Optional[int]]:
@@ -364,6 +370,8 @@ def conversation_display_and_group(
     return (f"Conversation #{conversation_id}", None)
 
 
+# Function below was generated using AI (Gemini)
+# Loads trimmed group display name from DB or returns a stable fallback label.
 def group_name(conn, group_id: int) -> str:
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

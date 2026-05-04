@@ -18,6 +18,8 @@ except Exception:
 authorization_blueprint = Blueprint('authorization', __name__)
 
 
+# Function below was generated using AI (Gemini)
+# Produces a unique username from a Google-derived base, appending numeric suffixes if needed.
 def _generate_unique_username(base_username: str, cursor) -> str:
     normalized = (base_username or "google_user").strip().lower().replace(" ", "_")
     if not normalized:
@@ -119,6 +121,8 @@ def login():
 
 @authorization_blueprint.route("/google-login", methods=["POST"])
 @swag_from(load_yaml("documentation/authorization.yaml", "google_login"))
+# Function below was generated using AI (Gemini)
+# Verifies Google ID token, creates or loads user, and returns JWT access token.
 def google_login():
     if google_requests is None or google_id_token is None:
         return {"message": "Google SSO is not available on backend."}, 501

@@ -76,15 +76,6 @@ class _MyAppState extends State<MyApp> {
   // Az potom povoli navigaciu na cielovu obrazovku z push spravy.
   void initState() {
     super.initState();
-    
-    
-    
-    
-    
-    
-    
-    
-    
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await PushNotificationService.instance.consumeInitialMessage();

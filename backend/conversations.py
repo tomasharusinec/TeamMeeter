@@ -17,6 +17,8 @@ cipher_suite = Fernet(os.getenv("MESSAGE_ENCRYPTION_KEY"))
 @conversations_blueprint.route("/", methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_conversations"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Returns direct (non-group) conversations the current user participates in.
 def get_conversations():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -43,6 +45,8 @@ def get_conversations():
 @conversations_blueprint.route("/", methods=["POST"])
 @swag_from(load_yaml("documentation/conversations.yaml", "create_conversation"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Creates a conversation, adds participants by id or username, and notifies invitees.
 def create_conversation():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -144,6 +148,8 @@ def create_conversation():
 @conversations_blueprint.route("/<int:conv_id>", methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_conversation"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Returns metadata for a conversation if the current user is a participant.
 def get_conversation(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -173,6 +179,8 @@ def get_conversation(conv_id):
 @conversations_blueprint.route("/<int:conv_id>/participants", methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_participants"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Lists participants of a conversation with basic profile fields.
 def get_participants(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -204,6 +212,8 @@ def get_participants(conv_id):
 @conversations_blueprint.route("/<int:conv_id>/participants", methods=["POST"])
 @swag_from(load_yaml("documentation/conversations.yaml", "add_participant"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Sends a membership invitation to add a user to a direct conversation (not group-linked).
 def add_participant(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -311,6 +321,8 @@ def add_participant(conv_id):
 )
 @swag_from(load_yaml("documentation/conversations.yaml", "remove_participant"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Removes another user from a direct conversation the caller belongs to.
 def remove_participant(conv_id, user_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -350,6 +362,8 @@ def remove_participant(conv_id, user_id):
 @conversations_blueprint.route("/<int:conv_id>", methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "delete_conversation"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Deletes a direct conversation when it is not tied to a group channel.
 def delete_conversation(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -384,6 +398,8 @@ def delete_conversation(conv_id):
 @conversations_blueprint.route("/<int:conv_id>/messages", methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_messages"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Returns messages for a conversation with decrypted text and optional file metadata.
 def get_messages(conv_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -430,6 +446,8 @@ def get_messages(conv_id):
 )
 @swag_from(load_yaml("documentation/conversations.yaml", "delete_message"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Deletes a message if the caller is the sender or has group delete_messages permission.
 def delete_message(conv_id, message_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -484,6 +502,8 @@ def delete_message(conv_id, message_id):
 @conversations_blueprint.route("/files/<int:file_id>", methods=["GET"])
 @swag_from(load_yaml("documentation/conversations.yaml", "get_file"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Streams an attached file binary when the user participates in the linked conversation.
 def get_file(file_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -526,6 +546,8 @@ def get_file(file_id):
 @conversations_blueprint.route("/files/<int:file_id>", methods=["DELETE"])
 @swag_from(load_yaml("documentation/conversations.yaml", "delete_file"))
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Deletes a file attachment when the caller is the original message sender.
 def delete_file(file_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)

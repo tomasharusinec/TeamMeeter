@@ -22,6 +22,8 @@ _firebase_ready_announced = False
 _no_fcm_tokens_warning_emitted = False
 
 
+# Function below was generated using AI (Gemini)
+# Returns default filesystem paths where a Firebase service account JSON may live.
 def _service_account_candidates() -> list[str]:
     backend_dir = os.path.dirname(os.path.abspath(__file__))
     return [
@@ -30,11 +32,9 @@ def _service_account_candidates() -> list[str]:
     ]
 
 
+# Function below was generated using AI (Gemini)
+# Resolves service account path from env or known filenames next to this module.
 def resolve_firebase_service_account_path() -> Optional[str]:
-    """
-    1) FIREBASE_SERVICE_ACCOUNT_PATH ak existuje
-    2) inak firebase_service.json vedľa tohto modulu (typický vývoj bez .env)
-    """
     env = (os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH") or "").strip()
     if env and os.path.isfile(env):
         return env
@@ -44,6 +44,8 @@ def resolve_firebase_service_account_path() -> Optional[str]:
     return None
 
 
+# Function below was generated using AI (Gemini)
+# Lazily initializes Firebase Admin SDK and prints one-time status if misconfigured.
 def _is_firebase_ready() -> bool:
     global _firebase_disabled_reason_printed, _firebase_ready_announced
 
@@ -80,11 +82,9 @@ def _is_firebase_ready() -> bool:
     return True
 
 
+# Function below was generated using AI (Gemini)
+# Prints FCM configuration summary once when the Flask app imports the module.
 def log_firebase_status_at_startup() -> None:
-    """
-    Zavolaj raz pri štarte Flask aplikácie.
-    Predtým sa Firebase Admin inicializoval až pri prvom send_push — v konzole nebolo nič vidno.
-    """
     print("--- FCM (push) ---")
     path = resolve_firebase_service_account_path()
     if path:
@@ -99,11 +99,15 @@ def log_firebase_status_at_startup() -> None:
     print("--- end FCM ---")
 
 
+# Function below was generated using AI (Gemini)
+# Yields fixed-size slices of a token list for FCM multicast batching.
 def _chunked(items: list[str], chunk_size: int) -> Iterable[list[str]]:
     for i in range(0, len(items), chunk_size):
         yield items[i:i + chunk_size]
 
 
+# Function below was generated using AI (Gemini)
+# Truncates notification title/body strings to FCM-safe lengths with ellipsis.
 def _truncate_fcm_text(value: str, max_len: int) -> str:
     s = "" if value is None else str(value)
     if len(s) <= max_len:
@@ -111,6 +115,8 @@ def _truncate_fcm_text(value: str, max_len: int) -> str:
     return s[: max_len - 1] + "…"
 
 
+# Function below was generated using AI (Gemini)
+# Truncates individual FCM data map values to stay under platform payload limits.
 def _truncate_fcm_data_value(value: str, max_len: int = 900) -> str:
     """FCM data payload má limit ~4 KiB celkom; jednotlivé hodnoty drž krátke."""
     s = "" if value is None else str(value)
@@ -119,13 +125,9 @@ def _truncate_fcm_data_value(value: str, max_len: int = 900) -> str:
     return s[: max_len - 1] + "…"
 
 
+# Function below was generated using AI (Gemini)
+# Detects FCM errors that mean the device token should be marked inactive in DB.
 def _should_mark_fcm_token_inactive(exc: BaseException) -> bool:
-    """
-    Označ token za neplatný len pri chybách typu „token už neexistuje“.
-
-    NIKDY nepoužívaj široké „invalid-argument“ — FCM ho vracia aj pri zlom payload
-    (dlhý text, encoding, …) a backend by omylom deaktivoval všetky tokeny v batchi.
-    """
     text = str(exc).lower().replace("_", "-")
     if "registration-token-not-registered" in text:
         return True
@@ -140,12 +142,9 @@ def _should_mark_fcm_token_inactive(exc: BaseException) -> bool:
     return False
 
 
+# Function below was generated using AI (Gemini)
+# Shrinks FCM data payload iteratively so JSON UTF-8 size stays under max_bytes.
 def _cap_fcm_data_map(data: dict[str, str], max_bytes: int = 3800) -> dict[str, str]:
-    """
-    FCM (Android) obmedzuje súčet kľúčov + hodnôt v `data` (~4096 B UTF-8).
-    Pri dlhých správach / mene konverzácie inak zlyhá celý multicast — iné typy
-    pushov majú kratší payload, preto „fungujú“ a chat nie.
-    """
     if not data:
         return {}
     out: dict[str, str] = {str(k): "" if v is None else str(v) for k, v in data.items()}
@@ -172,6 +171,8 @@ def _cap_fcm_data_map(data: dict[str, str], max_bytes: int = 3800) -> dict[str, 
     return out
 
 
+# Function below was generated using AI (Gemini)
+# Bulk-updates user_push_token rows to is_active=FALSE for invalid FCM tokens.
 def _mark_tokens_inactive(tokens: list[str]):
     if not tokens:
         return
@@ -187,6 +188,8 @@ def _mark_tokens_inactive(tokens: list[str]):
     db.commit()
 
 
+# Function below was generated using AI (Gemini)
+# Loads distinct active FCM registration tokens for the given user id list.
 def get_user_push_tokens(user_ids: list[int]) -> list[str]:
     if not user_ids:
         return []
@@ -207,12 +210,9 @@ def get_user_push_tokens(user_ids: list[int]) -> list[str]:
     return [row["token"] for row in rows if row.get("token")]
 
 
+# Function below was generated using AI (Gemini)
+# Builds Android notification tag string so related pushes collapse in the status bar.
 def _android_tag_from_data(data: dict[str, str]) -> Optional[str]:
-    """Per-konverzácia / aktivita kolapsujeme notifikácie do jedného „tagu“,
-    inak sa lišta plní stovkami chat-pushov a používateľ sa stratí.
-
-    Tag musí byť stabilný cez všetky správy v rovnakom kontexte (chat / aktivita),
-    aby Android nahradil predošlú notifikáciu novou."""
     if not data:
         return None
     notif_type = (data.get("notification_type") or "").strip()
@@ -232,6 +232,8 @@ def _android_tag_from_data(data: dict[str, str]) -> Optional[str]:
     return None
 
 
+# Function below was generated using AI (Gemini)
+# Sends FCM multicast notifications to users, trimming payload and deactivating bad tokens.
 def send_push_to_users(
     user_ids: list[int],
     title: str,

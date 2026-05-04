@@ -40,3 +40,25 @@ python backend/main.py
 ### 6. API Dokumentácia
 Po úspešnom spustení nájdete interaktívnu dokumentáciu (Swagger) na adrese:
 `http://localhost:5000/documentation/`
+
+---
+
+## Inštalácia a spustenie (Frontend – Flutter)
+
+Aplikácia sa nachádza v `frontend/flutter_application_1`. Pred spustením musí byť spustený backend (pozri vyššie).
+
+**Nástroje:** Flutter (Dart aspoň v rozsahu z `pubspec.yaml`), Android Studio (telefón cez USB alebo ladenie cez WiFi), pre **Windows** build ešte Visual Studio. Overenie prostredia: `flutter doctor`.
+
+**Závislosti a beh:**
+```bash
+cd frontend/flutter_application_1
+flutter pub get
+flutter run
+```
+
+**IP backendu:** v súbore `lib/services/api_service.dart` upravte konštantu **`baseUrl`** v triede `ApiService` podľa toho, kde beží Flask:
+- **Fyzický mobil v rovnakej sieti ako PC s backendom** → `http://<PC_IP>:5000` (na PC povoľte port **5000** vo firewalle)
+
+**Firebase súbory:** pre Android patrí do projektu `android/app/google-services.json` (z Firebase konzoly, v repozitári sa nachádza vzorová verzia). Push zo servera používa backend súbor `backend/firebase_service.json` (cesta v `FIREBASE_SERVICE_ACCOUNT_PATH` v `.env`) — bez neho FCM zo servera nepôjde.
+
+Pre správne fungovanie aplikácie pri prvom spustení na telefóne potvrďte požadované oprávnenia.

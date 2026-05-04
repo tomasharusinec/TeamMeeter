@@ -34,6 +34,8 @@ EXPIRED_PURGE_THROTTLE_SEC = 2.0
 EXPIRED_PURGE_WORKER_SLEEP_SEC = 2.0
 
 
+# Function below was generated using AI (Gemini)
+# Deletes overdue activities, notifies assignees, and optionally sends FCM fallback pushes.
 def purge_expired_activities_and_notify(force: bool = False):
     global _last_cleanup_timestamp
 
@@ -208,6 +210,8 @@ def get_activities(group_id):
 
 @activities_blueprint.route('/groups/<int:group_id>/access', methods=["GET"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Returns whether the current member has any activity permission in the group.
 def get_group_activity_access(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)

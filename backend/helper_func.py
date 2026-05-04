@@ -44,6 +44,8 @@ def check_permission(user_id, group_id, permission_name):
         return cursor.fetchone() is not None
 
 
+# Function below was generated using AI (Gemini)
+# Returns True if the user is Manager or has any activity-related permission in the group.
 def has_any_activity_permission(user_id, group_id):
     with db.cursor(cursor_factory=RealDictCursor) as cursor:
         cursor.execute(
@@ -104,6 +106,9 @@ def load_yaml(path, key):
         file_dict = yaml.safe_load(file)
         return file_dict[key]
 
+
+# Function below was generated using AI (Gemini)
+# Parses deadline input from JSON into an aware UTC datetime or raises ValueError.
 def parse_client_deadline(deadline_str):
     if not deadline_str:
         return None

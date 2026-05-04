@@ -79,6 +79,8 @@ _cleanup_worker_started = False
 
 
 @app.before_request
+# Function below was generated using AI (Gemini)
+# Flask hook: throttled purge of expired activities at the start of each HTTP request.
 def cleanup_expired_activities():
     try:
         purge_expired_activities_and_notify()
@@ -86,12 +88,16 @@ def cleanup_expired_activities():
         print(f"Expired activity cleanup failed: {exc}")
 
 
+# Function below was generated using AI (Gemini)
+# Starts a daemon thread once so expired-activity cleanup runs under Gunicorn/uWSGI too.
 def _start_expired_cleanup_worker():
     global _cleanup_worker_started
     if _cleanup_worker_started:
         return
     _cleanup_worker_started = True
 
+    # Function below was generated using AI (Gemini)
+    # Background loop: periodically purges expired activities with force=True.
     def _worker():
         while True:
             try:
@@ -104,7 +110,6 @@ def _start_expired_cleanup_worker():
     thread.start()
 
 
-# Deadline cleanup + push (activity expired) must run even under Gunicorn/uWSGI, not only `python main.py`.
 _start_expired_cleanup_worker()
 
 log_firebase_status_at_startup()

@@ -23,6 +23,8 @@ NOTIFICATION_TYPE_ACTIVITY_COMPLETED = 5
 NOTIFICATION_TYPE_ACTIVITY_EXPIRED = 6
 
 
+# Function below was generated using AI (Gemini)
+# Best-effort websocket broadcast to one user; swallows errors so callers are not interrupted.
 def _safe_broadcast_notification(recipient_user_id: int, payload: dict):
     try:
         broadcast_to_users([recipient_user_id], payload)
@@ -30,6 +32,8 @@ def _safe_broadcast_notification(recipient_user_id: int, payload: dict):
         pass
 
 
+# Function below was generated using AI (Gemini)
+# Inserts membership-invite notification rows, commits, then pushes websocket + FCM to recipient.
 def create_membership_request_notification(
     recipient_user_id: int,
     requester_user_id: int,
@@ -97,6 +101,8 @@ def create_membership_request_notification(
     )
 
 
+# Function below was generated using AI (Gemini)
+# Notifies a user they were assigned to an activity via DB, websocket, and FCM.
 def create_activity_assigned_notification(
     recipient_user_id: int,
     activity_id: int,
@@ -160,6 +166,8 @@ def create_activity_assigned_notification(
     )
 
 
+# Function below was generated using AI (Gemini)
+# Broadcasts activity-completed notification to many recipients with shared notification id.
 def create_activity_completed_notification(
     recipient_user_ids: list[int],
     activity_id: int,
@@ -231,6 +239,8 @@ def create_activity_completed_notification(
     )
 
 
+# Function below was generated using AI (Gemini)
+# Notifies users that an activity expired (deadline passed) and sends data-only FCM payload.
 def create_activity_expired_notification(
     recipient_user_ids: list[int],
     activity_name: str,
@@ -302,6 +312,8 @@ def create_activity_expired_notification(
 
 @notifications_blueprint.route('/push-token', methods=["POST"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Upserts FCM device token for the authenticated user (reactivates and updates last_seen).
 def register_push_token():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -350,6 +362,8 @@ def register_push_token():
 
 @notifications_blueprint.route('/push-token', methods=["DELETE"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Marks one or all push tokens inactive for the current user (optional token in JSON body).
 def unregister_push_token():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -487,6 +501,8 @@ def delete_notification(notif_id):
 
 @notifications_blueprint.route('/<int:notif_id>/respond', methods=["POST"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Accepts or rejects a pending group/conversation invite tied to the notification id.
 def respond_membership_request(notif_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)

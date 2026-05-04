@@ -411,6 +411,8 @@ def add_group_member(group_id):
 
 @groups_blueprint.route('/join', methods=["POST"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Joins a group via QR invite code, assigns Member role, and adds group conversation participant.
 def join_group():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -494,6 +496,8 @@ def join_group():
 
 @groups_blueprint.route('/<int:group_id>/invite', methods=["GET"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Returns the group's QR invite token for members who request it.
 def get_group_invite(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -518,6 +522,8 @@ def get_group_invite(group_id):
 
 @groups_blueprint.route('/<int:group_id>/invite', methods=["POST"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Ensures a QR invite code exists on the group and persists it for sharing.
 def enable_group_invite(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
@@ -558,6 +564,8 @@ def enable_group_invite(group_id):
 
 @groups_blueprint.route('/<int:group_id>/invite', methods=["DELETE"])
 @jwt_required()
+# Function below was generated using AI (Gemini)
+# Clears the group's QR invite code so new joins via old code are no longer possible.
 def disable_group_invite(group_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
