@@ -194,7 +194,6 @@ def get_user_push_tokens(user_ids: list[int]) -> list[str]:
     if not ids:
         return []
     with db.cursor(cursor_factory=RealDictCursor) as cur:
-        # IN %s + tuple je spoľahlivejšie než ANY(%s) s listom (psycopg2 / typ poľa).
         cur.execute(
             """
             SELECT DISTINCT token
@@ -208,11 +207,38 @@ def get_user_push_tokens(user_ids: list[int]) -> list[str]:
     return [row["token"] for row in rows if row.get("token")]
 
 
+def _android_tag_from_data(data: dict[str, str]) -> Optional[str]:
+    """Per-konverzácia / aktivita kolapsujeme notifikácie do jedného „tagu“,
+    inak sa lišta plní stovkami chat-pushov a používateľ sa stratí.
+
+    Tag musí byť stabilný cez všetky správy v rovnakom kontexte (chat / aktivita),
+    aby Android nahradil predošlú notifikáciu novou."""
+    if not data:
+        return None
+    notif_type = (data.get("notification_type") or "").strip()
+    if notif_type == "1":
+        conv_id = (data.get("conversation_id") or "").strip()
+        if conv_id:
+            return f"chat-{conv_id}"
+    if notif_type in {"2", "4", "5", "6"}:
+        activity_id = (data.get("activity_id") or "").strip()
+        if activity_id:
+            return f"activity-{activity_id}"
+    if notif_type == "3":
+        target_type = (data.get("target_type") or "").strip()
+        target_id = (data.get("target_id") or "").strip()
+        if target_type and target_id:
+            return f"invite-{target_type}-{target_id}"
+    return None
+
+
 def send_push_to_users(
     user_ids: list[int],
     title: str,
     body: str,
     data: Optional[dict[str, str]] = None,
+    *,
+    data_message_only: bool = False,
 ):
     global _no_fcm_tokens_warning_emitted
     if not user_ids:
@@ -242,42 +268,93 @@ def send_push_to_users(
                 "" if value is None else str(value),
             )
 
+    if data_message_only:
+        # Pre Flutter: v popredí / `onBackgroundMessage` čítame title/body z dát.
+        payload_data["push_title"] = _truncate_fcm_text(title, 250)
+        payload_data["push_body"] = _truncate_fcm_text(body, 1800)
+
     payload_data = _cap_fcm_data_map(payload_data, max_bytes=3800)
+    android_tag = _android_tag_from_data(payload_data)
+
+    logger.info(
+        "FCM dispatch: %s tokens, type=%s tag=%s data_keys=%s",
+        len(tokens),
+        payload_data.get("notification_type"),
+        android_tag,
+        sorted(payload_data.keys()),
+    )
 
     invalid_tokens: list[str] = []
 
+    android_cfg = messaging.AndroidConfig(
+        priority="high",
+        notification=messaging.AndroidNotification(
+            channel_id="teammeeter_notifications",
+            sound="default",
+            tag=android_tag,
+            # POZN.: `click_action` SEM NEDÁVAŤ — pozri komentár v pôvodnom kóde.
+        ),
+    )
+
     for token_batch in _chunked(tokens, 500):
+        logged_failures = 0
         try:
-            message = messaging.MulticastMessage(
-                tokens=token_batch,
-                notification=messaging.Notification(title=title, body=body),
-                data=payload_data,
-                android=messaging.AndroidConfig(
-                    priority="high",
-                    notification=messaging.AndroidNotification(
-                        channel_id="teammeeter_notifications",
-                        sound="default",
+            if data_message_only:
+                # Len `data` → na Androide sa spustí `onBackgroundMessage` a appka
+                # zobrazí lokálnu notifikáciu (spoľahlivejšie ako hybrid na pozadí).
+                message = messaging.MulticastMessage(
+                    tokens=token_batch,
+                    data=payload_data,
+                    android=android_cfg,
+                    apns=messaging.APNSConfig(
+                        headers={
+                            "apns-priority": "10",
+                            "apns-push-type": "alert",
+                        },
+                        payload=messaging.APNSPayload(
+                            aps=messaging.Aps(
+                                alert=messaging.ApsAlert(title=title, body=body),
+                                sound="default",
+                            ),
+                        ),
                     ),
-                ),
-                apns=messaging.APNSConfig(
-                    payload=messaging.APNSPayload(
-                        aps=messaging.Aps(sound="default"),
+                )
+            else:
+                message = messaging.MulticastMessage(
+                    tokens=token_batch,
+                    notification=messaging.Notification(title=title, body=body),
+                    data=payload_data,
+                    android=android_cfg,
+                    apns=messaging.APNSConfig(
+                        headers={
+                            "apns-priority": "10",
+                            "apns-push-type": "alert",
+                        },
+                        payload=messaging.APNSPayload(
+                            aps=messaging.Aps(sound="default"),
+                        ),
                     ),
-                ),
-            )
+                )
             response = messaging.send_each_for_multicast(message)
-            _logged_failures = 0
+            successes = 0
             for index, send_response in enumerate(response.responses):
                 if send_response.success:
+                    successes += 1
                     continue
                 exc = send_response.exception
                 if exc is None:
                     continue
-                if _logged_failures < 5:
+                if logged_failures < 5:
                     logger.warning("FCM send failed (index %s): %s", index, exc)
-                    _logged_failures += 1
+                    logged_failures += 1
                 if _should_mark_fcm_token_inactive(exc):
                     invalid_tokens.append(token_batch[index])
+            logger.info(
+                "FCM batch done: %s/%s success (type=%s)",
+                successes,
+                len(token_batch),
+                payload_data.get("notification_type"),
+            )
         except Exception as exc:
             logger.exception("Failed to send push notification batch: %s", exc)
 

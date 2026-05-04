@@ -128,6 +128,9 @@ def create_message_notification(conn, message_id: int, conversation_id: int, sen
         su = sender_username(conn, sender_id)
         title = f"New message in {conv_name}"
         body = f"{su}: {preview}"
+        # Iba minimálna sada údajov, ktoré Flutter potrebuje na navigáciu po klepnutí.
+        # `notification` blok (title/body) sa posiela samostatne v `send_push_to_users`,
+        # takže ich do `data` nedávame (zbytočne by zaberali z 4 KiB FCM limitu).
         push_data = {
             "notification_type": "1",
             "notification_id": str(notification_id),
@@ -136,13 +139,9 @@ def create_message_notification(conn, message_id: int, conversation_id: int, sen
             "sender_username": su,
             "message_id": str(message_id),
             "chat_kind": "group" if group_id_for_push is not None else "direct",
-            "push_title": title,
-            "push_body": body,
         }
         if group_id_for_push is not None:
             push_data["group_id"] = str(group_id_for_push)
-        # Rovnaký FCM tvar ako aktivita / pozvánka (notification + data). Data-only
-        # chat push na Androide často nevyvolá systémovú notifikáciu vôbec.
         send_push_to_users(
             recipient_ids,
             title=title,

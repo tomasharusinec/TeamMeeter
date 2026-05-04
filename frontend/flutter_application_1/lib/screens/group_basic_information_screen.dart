@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../models/group.dart';
@@ -111,20 +112,44 @@ class _GroupBasicInformationScreenState
 
   Future<void> _pickAndUploadIcon() async {
     if (_group == null) return;
-    final hasPermission = await PermissionService.ensureGalleryPermission();
-    if (!hasPermission) {
+    if (!await PermissionService.hasGalleryReadAccess()) {
+      final granted = await PermissionService.requestGalleryPermission();
+      if (!granted) {
+        if (!mounted) return;
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text(
+              'Bez prístupu ku galérii nemôžeme nahrať ikonu skupiny.',
+            ),
+            backgroundColor: Color(0xFF8B1A2C),
+          ),
+        );
+        return;
+      }
+    }
+
+    XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        requestFullMetadata: false,
+      );
+    } on PlatformException catch (e) {
       if (!mounted) return;
+      final denied = e.code == 'photo_access_denied' ||
+          (e.message?.toLowerCase().contains('permission') ?? false);
       context.showLatestSnackBar(
-        const SnackBar(
-          content: Text('Povoľ prístup ku galérii v nastaveniach aplikácie.'),
-          backgroundColor: Color(0xFF8B1A2C),
+        SnackBar(
+          content: Text(
+            denied
+                ? 'Prístup ku galérii bol zamietnutý. Môžete ho zmeniť v nastaveniach telefónu.'
+                : 'Nepodarilo sa otvoriť galériu.',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
       return;
     }
-
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
 
     setState(() => _isIconLoading = true);

@@ -25,15 +25,6 @@ import 'group_detail_screen.dart';
 import 'notifications_screen.dart';
 import 'user_settings_screen.dart';
 
-int? _pushParseInt(Object? value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is double) return value.round();
-  final s = value.toString().trim();
-  if (s.isEmpty) return null;
-  return int.tryParse(s);
-}
-
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -57,7 +48,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _groupsLoadRequestId = 0;
   int _groupsNonSilentInflight = 0;
   Timer? _offlineSyncTimer;
-  StreamSubscription<Map<String, dynamic>>? _notificationTapSubscription;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _offlineSyncRunning = false;
 
@@ -73,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _loadData();
     _refreshOfflineBannerState();
-    _offlineSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+    _offlineSyncTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
       await _runOfflineSyncInBackground();
       await _refreshOfflineBannerState();
       await _refreshNotificationIndicator();
@@ -88,27 +78,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      unawaited(TeamMeeterAnalytics.instance.logMainPageView());
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await authProvider.ensureCurrentUserLoaded();
       if (!mounted) return;
       await _initPushNotifications();
+      if (!mounted) return;
+      PushNotificationService.instance.onForegroundMessageHandled = (data) {
+        if (!mounted) return;
+        final type = data['notification_type']?.toString();
+        if (type == '6' || type == '2' || type == '4' || type == '5') {
+          unawaited(_loadActivities(showError: false));
+        }
+        unawaited(_refreshNotificationIndicator());
+      };
     });
   }
 
   @override
   void dispose() {
+    PushNotificationService.instance.onForegroundMessageHandled = null;
     WidgetsBinding.instance.removeObserver(this);
     _offlineSyncTimer?.cancel();
     _connectivitySubscription?.cancel();
-    _notificationTapSubscription?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(_loadActivities(showError: false));
+      unawaited(_refreshNotificationIndicator());
       _runOfflineSyncInBackground();
-      _refreshNotificationIndicator();
       _syncPushTokenSilently();
       if (_currentNavIndex == 2) {
         unawaited(
@@ -120,19 +121,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _initPushNotifications() async {
+    // Routing po klepnutí na push notifikáciu rieši `PushNavigator` cez globálny
+    // navigator key — HomeScreen už nemusí registrovať vlastný listener (predtým
+    // sa to lámalo, ked appka nabehla skoro od cold-startu, alebo používateľ
+    // bol na inej obrazovke ako Home v čase doručenia tap-eventu).
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final api = authProvider.apiService;
-      await PushNotificationService.instance.syncPushTokenWithBackend(api);
-      _notificationTapSubscription?.cancel();
-      _notificationTapSubscription = PushNotificationService
-          .instance
-          .onNotificationTap
-          .listen(_handlePushTapData);
-      final initialData = PushNotificationService.instance.takeInitialTapData();
-      if (initialData != null) {
-        _handlePushTapData(initialData);
-      }
+      await PushNotificationService.instance.syncPushTokenWithBackend(
+        authProvider.apiService,
+      );
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('TeamMeeter: _initPushNotifications zlyhal: $e\n$st');
@@ -147,162 +144,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         authProvider.apiService,
       );
     } catch (_) {}
-  }
-
-  Future<void> _handlePushTapData(Map<String, dynamic> data) async {
-    if (!mounted) return;
-
-    final type = _pushParseInt(data['notification_type']);
-    final conversationId = _pushParseInt(data['conversation_id']);
-    final activityId = _pushParseInt(data['activity_id']);
-    final messageId = _pushParseInt(data['message_id']);
-
-    Future<void> openChat(int convId) async {
-      unawaited(
-        TeamMeeterAnalytics.instance.logPushNotificationOpen(
-          notificationType: 'chat',
-          conversationId: convId,
-        ),
-      );
-      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      var title = 'Conversation #$convId';
-      final titleFromPush = data['conversation_name']?.toString().trim();
-      if (titleFromPush != null && titleFromPush.isNotEmpty) {
-        title = titleFromPush;
-      }
-      try {
-        final conversation = await api.getConversation(convId);
-        final resolvedTitle = conversation['name']?.toString().trim();
-        if (resolvedTitle != null && resolvedTitle.isNotEmpty) {
-          title = resolvedTitle;
-        }
-      } catch (_) {}
-
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ChatScreen(conversationId: convId, title: title),
-        ),
-      );
-      if (!mounted) return;
-      unawaited(
-        _conversationsScreenKey.currentState?.reloadConversations() ??
-            Future.value(),
-      );
-      await _refreshNotificationIndicator();
-    }
-
-    Future<void> openNotificationsList() async {
-      unawaited(
-        TeamMeeterAnalytics.instance.logPushNotificationOpen(
-          notificationType: 'notifications_list',
-        ),
-      );
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-      );
-      if (!mounted) return;
-      await _refreshNotificationIndicator();
-    }
-
-    Future<void> goToMainHomeTab() async {
-      unawaited(
-        TeamMeeterAnalytics.instance.logPushNotificationOpen(
-          notificationType: 'home_tasks_tab',
-        ),
-      );
-      final nav = Navigator.of(context);
-      nav.popUntil((route) => route.isFirst);
-      if (!mounted) return;
-      setState(() => _currentNavIndex = 1);
-      await _loadData();
-      await _refreshNotificationIndicator();
-    }
-
-    Future<bool> tryOpenActivityFromPush() async {
-      if (activityId == null || activityId <= 0) return false;
-      final t = type;
-      final analyticsType = t == 2
-          ? 'activity_new'
-          : t == 4
-              ? 'activity_assigned'
-              : t == 5
-                  ? 'activity_completed'
-                  : 'activity_unknown';
-      unawaited(
-        TeamMeeterAnalytics.instance.logPushNotificationOpen(
-          notificationType: analyticsType,
-          activityId: activityId,
-        ),
-      );
-      final api = Provider.of<AuthProvider>(context, listen: false).apiService;
-      try {
-        final activity = await api.getActivityDetails(activityId);
-        if (!mounted) return true;
-        await showDialog<void>(
-          context: context,
-          builder: (_) =>
-              ActivityDetailDialog(
-                activity: activity,
-                onDeleted: _loadData,
-                onUpdated: _loadData,
-              ),
-        );
-        if (!mounted) return true;
-        await _loadData();
-        return true;
-      } catch (_) {
-        return false;
-      }
-    }
-
-    // Správy musia ísť pred typom 6: pri niektorých zariadeniach/FCM payload môže byť
-    // notification_type nespoľahlivý; message_id posielame len pri správach z backendu.
-    final isMessagePush =
-        (type == 1 || (messageId != null && messageId > 0)) &&
-        conversationId != null &&
-        conversationId > 0;
-    if (isMessagePush) {
-      await openChat(conversationId);
-      return;
-    }
-
-    if (type == 1) {
-      await openNotificationsList();
-      return;
-    }
-
-    // 3 — pozvánka do skupiny / konverzácie → obrazovka notifikácií (odpovede)
-    if (type == 3) {
-      await openNotificationsList();
-      return;
-    }
-
-    // 6 — expirovaná aktivita (bez message_id) → hlavné menu (stredná záložka Úlohy)
-    if (type == 6 && (messageId == null || messageId <= 0)) {
-      await goToMainHomeTab();
-      return;
-    }
-
-    // Staršie push-e: len conversation_id bez typu / neznámy typ
-    if (conversationId != null && conversationId > 0) {
-      await openChat(conversationId);
-      return;
-    }
-
-    // 2, 4, 5 — nová / priradená / dokončená aktivita
-    if ((type == 2 || type == 4 || type == 5) &&
-        activityId != null &&
-        activityId > 0) {
-      if (await tryOpenActivityFromPush()) return;
-    }
-
-    unawaited(
-      TeamMeeterAnalytics.instance.logPushNotificationOpen(
-        notificationType: 'notifications_fallback',
-      ),
-    );
-    await openNotificationsList();
   }
 
   Future<void> _loadData() async {
@@ -1842,7 +1683,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final isActive = _currentNavIndex == index;
     return GestureDetector(
       onTap: () {
+        final previousIndex = _currentNavIndex;
         setState(() => _currentNavIndex = index);
+        if (previousIndex != index) {
+          switch (index) {
+            case 0:
+              unawaited(TeamMeeterAnalytics.instance.logCalendarView());
+              break;
+            case 2:
+              unawaited(TeamMeeterAnalytics.instance.logConversationsView());
+              break;
+            case 3:
+              unawaited(TeamMeeterAnalytics.instance.logGroupsView());
+              break;
+          }
+        }
         if (index == 2) {
           unawaited(
             _conversationsScreenKey.currentState?.reloadConversations() ??
@@ -1982,14 +1837,16 @@ class _QrScannerScreenState extends State<_QrScannerScreen> {
 
   Future<void> _initScanner() async {
     try {
-      final hasPermission = await PermissionService.ensureCameraPermission();
-      if (!hasPermission) {
-        if (!mounted) return;
-        setState(() {
-          _scannerError =
-              'Camera permission is required for QR scanning. Allow it in app settings.';
-        });
-        return;
+      if (!await PermissionService.hasCameraAccess()) {
+        final granted = await PermissionService.requestCameraPermission();
+        if (!granted) {
+          if (!mounted) return;
+          setState(() {
+            _scannerError =
+                'Na skenovanie QR kódu je potrebný súhlas s prístupom ku kamere.';
+          });
+          return;
+        }
       }
 
       await _controller.start();

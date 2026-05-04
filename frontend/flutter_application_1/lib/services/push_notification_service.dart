@@ -15,12 +15,15 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'api_service.dart';
+import 'push_navigation.dart';
 
 void _fcmLog(String message, [Object? error, StackTrace? stack]) {
   if (error != null) {
     developer.log(message, name: 'TeamMeeterFCM', error: error, stackTrace: stack);
+    debugPrint('[TeamMeeterFCM] $message — error: $error');
   } else {
     developer.log(message, name: 'TeamMeeterFCM');
+    debugPrint('[TeamMeeterFCM] $message');
   }
 }
 
@@ -28,7 +31,10 @@ void _fcmLog(String message, [Object? error, StackTrace? stack]) {
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Samostatný isolate: nevolaj ensureInitialized() (FCM listenery + duplicitný handler).
   await PushNotificationService.instance.ensureBgIsolateReady();
-  // Na pozadí systém zobrazí správy s FCM „notification“; data-only riešime lokálne.
+  // Hybridná správa (notification + data) na Androide často nevyvolá spoľahlivý
+  // vlastný kód — systém ju má zobraziť sám (nie vždy viditeľné v OEM / kanáli).
+  // Pre „activity expired“ posiela backend `data_message_only` + push_title/body
+  // v `data` → `notification == null` → vždy zobrazíme lokálnu notifikáciu.
   if (message.notification == null) {
     await PushNotificationService.instance.showLocalFromRemoteMessage(message);
   }
@@ -48,28 +54,26 @@ class PushNotificationService {
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
-  final StreamController<Map<String, dynamic>> _tapController =
-      StreamController<Map<String, dynamic>>.broadcast();
 
   bool _initialized = false;
   bool _localNotificationsReady = false;
-  Map<String, dynamic>? _initialTapData;
+  bool _initialMessageConsumed = false;
   StreamSubscription<String>? _tokenRefreshSubscription;
 
-  Stream<Map<String, dynamic>> get onNotificationTap => _tapController.stream;
+  /// Po doručení FCM v popredí (po pokuse o lokálnu notifikáciu) — obnova úloh / badge.
+  void Function(Map<String, dynamic> data)? onForegroundMessageHandled;
 
-  Map<String, dynamic>? takeInitialTapData() {
-    final data = _initialTapData;
-    _initialTapData = null;
-    return data;
-  }
-
-  void _emitTapData(Map<String, dynamic> data) {
-    if (data.isEmpty) return;
-    _initialTapData = data;
-    if (_tapController.hasListener) {
-      _tapController.add(data);
+  /// Centralised dispatch — every entry point (foreground local-notif tap,
+  /// background tap, terminated cold-start tap) lands here. The router itself
+  /// buffers if Flutter / AuthProvider are not yet ready, so we don't have to
+  /// reimplement that here.
+  Future<void> _handleTap(Map<String, dynamic> data, {required String source}) async {
+    if (data.isEmpty) {
+      _fcmLog('handleTap from $source: data IS EMPTY — ignoring tap');
+      return;
     }
+    _fcmLog('handleTap from $source: ${_redactPayload(data)}');
+    await PushNavigator.instance.dispatch(data);
   }
 
   /// Minimálna inicializácia v headless isolate (FCM background); bez onMessage / duplicitného handlera.
@@ -83,7 +87,11 @@ class PushNotificationService {
   Future<void> _setupLocalNotifications() async {
     if (_localNotificationsReady) return;
 
-    const androidSettings = AndroidInitializationSettings('ic_launcher');
+    // POZN.: meno musí zodpovedať drawable resource v
+    // `android/app/src/main/res/drawable/ic_notification.xml`. Predtým tu bolo
+    // 'ic_launcher', čo je len **mipmap**, nie drawable — plugin to hodil ako
+    // `PlatformException(invalid_icon, …)` a celý FCM init sa zrútil.
+    const androidSettings = AndroidInitializationSettings('ic_notification');
     const initializationSettings = InitializationSettings(
       android: androidSettings,
       iOS: DarwinInitializationSettings(),
@@ -96,8 +104,10 @@ class PushNotificationService {
         if (payload == null || payload.isEmpty) return;
         try {
           final data = Map<String, dynamic>.from(jsonDecode(payload));
-          _emitTapData(data);
-        } catch (_) {}
+          unawaited(_handleTap(data, source: 'local_notification_tap'));
+        } catch (e, st) {
+          _fcmLog('local notification payload decode failed', e, st);
+        }
       },
     );
 
@@ -117,23 +127,102 @@ class PushNotificationService {
       await Firebase.initializeApp();
     }
 
+    // Lokálna notifikačná knižnica môže zlyhať (napr. „invalid_icon“), ALE
+    // nesmieme kvôli tomu zhodiť aj registráciu FCM stream-listenerov nižšie —
+    // bez nich `onMessageOpenedApp` nikdy nedorazí a tap na background-push
+    // by sa ticho zahodil. Lokálne notifikácie sú „nice to have“ pre foreground;
+    // navigácia po klepnutí ide cez Firebase listenery.
     try {
       await _setupLocalNotifications();
     } catch (e, st) {
-      _fcmLog('ensureInitialized: flutter_local_notifications zlyhalo', e, st);
+      _fcmLog(
+        'ensureInitialized: flutter_local_notifications zlyhalo (POKRAČUJEME)',
+        e,
+        st,
+      );
+    }
+
+    try {
+      FirebaseMessaging.onMessage.listen((RemoteMessage m) {
+        // V popredí Android/iOS často nezobrazia systémovú notifikáciu z FCM „notification“
+        // bloku — musíme ju spracovať lokálne (inak sa nič neukáže).
+        _fcmLog('onMessage received (msgId=${m.messageId})');
+        unawaited(_processForegroundRemoteMessage(m));
+      });
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        _fcmLog(
+          'onMessageOpenedApp fired (msgId=${message.messageId}, '
+          'dataKeys=${message.data.keys.toList()})',
+        );
+        if (message.data.isEmpty) {
+          _fcmLog('onMessageOpenedApp: empty data, ignoring');
+          return;
+        }
+        unawaited(
+          _handleTap(
+            Map<String, dynamic>.from(message.data),
+            source: 'fcm_opened_app',
+          ),
+        );
+      });
+      _fcmLog('ensureInitialized: FCM listeners registered (onMessage, onMessageOpenedApp)');
+    } catch (e, st) {
+      _fcmLog('ensureInitialized: FCM stream listen zlyhal', e, st);
       rethrow;
     }
+
+    _initialized = true;
+  }
+
+  Future<void> _processForegroundRemoteMessage(RemoteMessage m) async {
+    try {
+      await showLocalFromRemoteMessage(m, foreground: true);
+    } catch (e, st) {
+      _fcmLog('showLocalFromRemoteMessage (foreground) zlyhalo', e, st);
+    }
+    final handler = onForegroundMessageHandled;
+    if (handler != null && m.data.isNotEmpty) {
+      try {
+        handler(Map<String, dynamic>.from(m.data));
+      } catch (e, st) {
+        _fcmLog('onForegroundMessageHandled zlyhalo', e, st);
+      }
+    }
+  }
+
+  /// Pýta sa na cold-start tap (FCM `getInitialMessage` + lokálna notifikácia,
+  /// ktorá launchla appku). Vyberá sa zámerne **až po tom**, čo je
+  /// `MaterialApp` namountovaná — `firebase_messaging` na Androide má známu
+  /// chybu, že keď `getInitialMessage()` zavoláš ešte v `main()` pred
+  /// `runApp()`, niekedy vráti `null` (plugin ešte nestihol prečítať launch
+  /// intent) a payload sa **už nikdy** nedá vyzdvihnúť (každý ďalší call
+  /// vracia `null`). Volanie z post-frame callbacku tomu prekáža.
+  Future<void> consumeInitialMessage() async {
+    if (_initialMessageConsumed) {
+      _fcmLog('consumeInitialMessage: skip (already consumed)');
+      return;
+    }
+    _initialMessageConsumed = true;
 
     var openedFromLocalNotification = false;
     try {
       final details = await _localNotifications.getNotificationAppLaunchDetails();
+      _fcmLog(
+        'getNotificationAppLaunchDetails: didLaunch='
+        '${details?.didNotificationLaunchApp ?? false}',
+      );
       if (details?.didNotificationLaunchApp ?? false) {
         final payload = details!.notificationResponse?.payload;
         if (payload != null && payload.isNotEmpty) {
           try {
             final decoded = jsonDecode(payload);
             if (decoded is Map) {
-              _emitTapData(Map<String, dynamic>.from(decoded));
+              unawaited(
+                _handleTap(
+                  Map<String, dynamic>.from(decoded),
+                  source: 'local_notification_launch',
+                ),
+              );
               openedFromLocalNotification = true;
             }
           } catch (e, st) {
@@ -145,34 +234,38 @@ class PushNotificationService {
       _fcmLog('getNotificationAppLaunchDetails zlyhalo (ignorujeme)', e, st);
     }
 
+    if (openedFromLocalNotification) return;
+
     try {
-      if (!openedFromLocalNotification) {
-        final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-        if (initialMessage != null && initialMessage.data.isNotEmpty) {
-          _emitTapData(initialMessage.data);
-        }
+      final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+      if (initialMessage == null) {
+        _fcmLog(
+          'getInitialMessage: NULL — appka sa nespustila z FCM tapnutia, '
+          'alebo (Android) plugin nestihol prečítať launch intent',
+        );
+        return;
       }
+      if (initialMessage.data.isEmpty) {
+        _fcmLog(
+          'getInitialMessage: RemoteMessage WITHOUT data block '
+          '(messageId=${initialMessage.messageId}) — nemáme čo routovať',
+        );
+        return;
+      }
+      _fcmLog(
+        'getInitialMessage: data prítomné '
+        '(messageId=${initialMessage.messageId}, '
+        'dataKeys=${initialMessage.data.keys.toList()})',
+      );
+      unawaited(
+        _handleTap(
+          Map<String, dynamic>.from(initialMessage.data),
+          source: 'fcm_initial_message',
+        ),
+      );
     } catch (e, st) {
-      _fcmLog('ensureInitialized: getInitialMessage zlyhalo (ignorujeme)', e, st);
+      _fcmLog('consumeInitialMessage: getInitialMessage zlyhalo (ignorujeme)', e, st);
     }
-
-    try {
-      FirebaseMessaging.onMessage.listen((RemoteMessage m) {
-        // V popredí Android/iOS často nezobrazia systémovú notifikáciu z FCM „notification“
-        // bloku — musíme ju spracovať lokálne (inak sa nič neukáže).
-        showLocalFromRemoteMessage(m, foreground: true);
-      });
-      FirebaseMessaging.onMessageOpenedApp.listen((message) {
-        if (message.data.isNotEmpty) {
-          _emitTapData(message.data);
-        }
-      });
-    } catch (e, st) {
-      _fcmLog('ensureInitialized: FCM stream listen zlyhal', e, st);
-      rethrow;
-    }
-
-    _initialized = true;
   }
 
   Future<void> requestPermissions() async {
@@ -221,7 +314,7 @@ class PushNotificationService {
           _channel.id,
           _channel.name,
           channelDescription: _channel.description,
-          icon: 'ic_launcher',
+          icon: 'ic_notification',
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -475,5 +568,20 @@ class PushNotificationService {
             );
           } catch (_) {}
         });
+  }
+
+  String _redactPayload(Map<String, dynamic> data) {
+    // Nezapisuj telo správy do logu (môže obsahovať osobné dáta).
+    const sensitive = {'push_body', 'push_title'};
+    final view = <String, String>{};
+    for (final entry in data.entries) {
+      if (sensitive.contains(entry.key)) {
+        view[entry.key] = '<redacted>';
+      } else {
+        final s = entry.value?.toString() ?? '';
+        view[entry.key] = s.length > 80 ? '${s.substring(0, 77)}…' : s;
+      }
+    }
+    return view.toString();
   }
 }

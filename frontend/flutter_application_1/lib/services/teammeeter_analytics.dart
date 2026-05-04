@@ -28,6 +28,24 @@ class TeamMeeterAnalytics {
     await _safe(() => _a.setUserId(id: null));
   }
 
+  /// Spodná navigácia v Home — vlastné eventy (nie štandardný `screen_view`).
+  Future<void> logCalendarView() async {
+    await _safe(() => _a.logEvent(name: 'calendar_view'));
+  }
+
+  Future<void> logConversationsView() async {
+    await _safe(() => _a.logEvent(name: 'conversations_view'));
+  }
+
+  Future<void> logGroupsView() async {
+    await _safe(() => _a.logEvent(name: 'groups_view'));
+  }
+
+  /// Hlavný shell po prihlásení (Home s bottom navigáciou) — prvý frame obrazovky.
+  Future<void> logMainPageView() async {
+    await _safe(() => _a.logEvent(name: 'main_page_view'));
+  }
+
   /// GA4 odporúčaná udalosť [login] — metóda prihlásenia.
   Future<void> logLogin({required String method}) async {
     await _safe(

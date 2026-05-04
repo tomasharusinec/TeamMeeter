@@ -11,7 +11,10 @@ from helper_func import get_current_user_id, sync_permissions
 from users import users_blueprint
 from roles import roles_blueprint
 from conversations import conversations_blueprint
-from activities import purge_expired_activities_and_notify
+from activities import (
+    EXPIRED_PURGE_WORKER_SLEEP_SEC,
+    purge_expired_activities_and_notify,
+)
 import os
 import threading
 import time
@@ -95,7 +98,7 @@ def _start_expired_cleanup_worker():
                 purge_expired_activities_and_notify(force=True)
             except Exception as exc:
                 print(f"Background expired activity cleanup failed: {exc}")
-            time.sleep(30)
+            time.sleep(EXPIRED_PURGE_WORKER_SLEEP_SEC)
 
     thread = threading.Thread(target=_worker, daemon=True)
     thread.start()

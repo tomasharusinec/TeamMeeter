@@ -10,11 +10,23 @@ import 'theme/app_colors.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/firebase_observability.dart';
+import 'services/push_navigation.dart';
 import 'services/push_notification_service.dart';
+
+/// Globálny navigátor — push notifikácia na chat môže prísť kedykoľvek (cold
+/// start, background, foreground), preto musíme vedieť navigovať aj bez
+/// `BuildContext`-u konkrétneho widgetu (napr. ked je používateľ v inej
+/// konverzácii / na inej obrazovke).
+final GlobalKey<NavigatorState> rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // Naviazať globálny navigator EŠTE PRED `ensureInitialized()`, aby sa cold-start
+  // tap (`getInitialMessage`) neztratil — `PushNavigator` ho buď hneď vykoná
+  // (ked už existuje navigator + auth), alebo si ho odloží do bufferu.
+  PushNavigator.instance.attach(rootNavigatorKey);
   var navigatorObservers = <NavigatorObserver>[];
   try {
     await configureFirebaseObservability();
@@ -40,10 +52,42 @@ Future<void> main() async {
   runApp(MyApp(navigatorObservers: navigatorObservers));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key, this.navigatorObservers = const []});
 
   final List<NavigatorObserver> navigatorObservers;
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Po prvom vykreslení `MaterialApp`-u má `rootNavigatorKey.currentState`
+    // už hodnotu — vtedy spustíme dve veci:
+    //   1) `consumeInitialMessage()` — pýtame sa FCM pluginu na cold-start
+    //      tap AŽ TERAZ. `firebase_messaging` na Androide má známu chybu,
+    //      že volanie ešte v `main()` pred `runApp()` často vráti `null`
+    //      (plugin nestihol prečítať launch intent) a payload sa už nedá
+    //      získať. Volanie z post-frame callbacku to obchádza.
+    //   2) `notifyAppReady()` — keby `consumeInitialMessage` predsa len
+    //      bežal predčasne (paralelný tap, retry, …), prehrá sa buffer.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await PushNotificationService.instance.consumeInitialMessage();
+      } catch (e, st) {
+        developer.log(
+          'main: consumeInitialMessage zlyhalo',
+          name: 'TeamMeeterFCM',
+          error: e,
+          stackTrace: st,
+        );
+      }
+      PushNavigator.instance.notifyAppReady();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +105,8 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             title: 'TeamMeeter',
             debugShowCheckedModeBanner: false,
-            navigatorObservers: navigatorObservers,
+            navigatorKey: rootNavigatorKey,
+            navigatorObservers: widget.navigatorObservers,
             themeMode: themeProvider.themeMode,
             theme: ThemeData(
               brightness: Brightness.light,

@@ -11,7 +11,7 @@ import '../models/activity.dart';
 import '../models/role.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.1.105:5000';
+  static const String baseUrl = 'http://192.168.1.123:5000';
   static const String _activityCacheKey = 'cached_activities_v1';
   static const String _activityOpsKey = 'pending_activity_ops_v1';
   static const String _activityTempIdKey = 'activity_temp_id_seed_v1';
@@ -211,18 +211,6 @@ class ApiService {
     } catch (_) {
       return [];
     }
-  }
-
-  bool _isActivityExpiredByDeadline(Activity activity) {
-    final deadline = activity.parsedDeadline;
-    if (deadline == null) return false;
-    return deadline.isBefore(DateTime.now());
-  }
-
-  List<Activity> _withoutExpiredActivities(List<Activity> activities) {
-    return activities
-        .where((activity) => !_isActivityExpiredByDeadline(activity))
-        .toList();
   }
 
   Future<void> _saveCachedActivities(List<Activity> activities) async {
@@ -2299,19 +2287,17 @@ class ApiService {
         final activities = (data['activities'] as List)
             .map((a) => Activity.fromJson(a))
             .toList();
-        final filtered = _withoutExpiredActivities(activities);
-        await _saveCachedActivities(filtered);
-        return filtered;
+        // Server už filtruje `deadline > now` a pred SELECTom spúšťa purge — duplicitný
+        // klientský filter len posúval zmiznutie úlohy pred pushom (zlé UX).
+        await _saveCachedActivities(activities);
+        return activities;
       }
       throw _buildApiException(response, 'Nepodarilo sa načítať aktivity');
     } catch (e) {
       if (!_isConnectivityError(e)) rethrow;
       final cached = await _loadCachedActivities();
-      final filtered = _withoutExpiredActivities(cached);
-      if (filtered.length != cached.length) {
-        await _saveCachedActivities(filtered);
-      }
-      return filtered;
+      await _saveCachedActivities(cached);
+      return cached;
     }
   }
 

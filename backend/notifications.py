@@ -296,6 +296,7 @@ def create_activity_expired_notification(
             "activity_name": activity_name,
             "group_name": group_name or "",
         },
+        data_message_only=True,
     )
 
 

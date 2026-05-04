@@ -28,19 +28,24 @@ cursor = db.cursor(cursor_factory=RealDictCursor)
 _cleanup_lock = threading.Lock()
 _last_cleanup_timestamp = 0.0
 
+# Čistenie expirovaných aktivít + FCM push. Krátke intervaly + index na deadline
+# (init_db) držia latenciu v sekundách; `/sync/pull` volá purge(force=True) pri každom pulli.
+EXPIRED_PURGE_THROTTLE_SEC = 2.0
+EXPIRED_PURGE_WORKER_SLEEP_SEC = 2.0
+
 
 def purge_expired_activities_and_notify(force: bool = False):
     global _last_cleanup_timestamp
 
     now_ts = time.time()
-    if not force and now_ts - _last_cleanup_timestamp < 60:
+    if not force and now_ts - _last_cleanup_timestamp < EXPIRED_PURGE_THROTTLE_SEC:
         return
-    if not _cleanup_lock.acquire(blocking=False):
+    if not _cleanup_lock.acquire(timeout=8.0):
         return
 
     try:
         now_ts = time.time()
-        if not force and now_ts - _last_cleanup_timestamp < 60:
+        if not force and now_ts - _last_cleanup_timestamp < EXPIRED_PURGE_THROTTLE_SEC:
             return
         _last_cleanup_timestamp = now_ts
 
@@ -110,6 +115,7 @@ def purge_expired_activities_and_notify(force: bool = False):
                             "activity_name": activity_name,
                             "group_name": group_name or "",
                         },
+                        data_message_only=True,
                     )
                 except Exception as push_exc:
                     print(f"Failed to send expired activity fallback push: {push_exc}")
@@ -184,6 +190,11 @@ def get_activities(group_id):
 
     if not has_any_activity_permission(current_user_id, group_id):
         return {"message": "You don't have permission to access group activities!"}, 403
+
+    try:
+        purge_expired_activities_and_notify(force=True)
+    except Exception as exc:
+        print(f"purge_expired_activities_and_notify (get_activities): {exc}")
 
     cursor.execute("""
         SELECT a.id_activity, a.name, a.description, a.creation_date, a.deadline, a.status, a.creator_id, u.username AS creator_username
@@ -269,6 +280,11 @@ def create_activity(group_id):
 def get_activity(activity_id):
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
+
+    try:
+        purge_expired_activities_and_notify(force=True)
+    except Exception as exc:
+        print(f"purge_expired_activities_and_notify (get_activity): {exc}")
 
     info = get_activity_info(activity_id)
     if info is None:
@@ -804,6 +820,11 @@ def remove_activity_role(activity_id, role_id):
 def get_my_activities():
     identity = get_jwt_identity()
     current_user_id = get_current_user_id(identity)
+
+    try:
+        purge_expired_activities_and_notify(force=True)
+    except Exception as exc:
+        print(f"purge_expired_activities_and_notify (get_my_activities): {exc}")
 
     # Vlastný kurzor: modulový `cursor` je zdieľaný naprieč requestami a pri paralelnom
     # Flask serveri spôsobuje psycopg2.ProgrammingError: no results to fetch.

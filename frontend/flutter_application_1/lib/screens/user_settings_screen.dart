@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../dev/crashlytics_debug.dart';
 import '../providers/auth_provider.dart';
-import '../services/permission_service.dart';
 import '../services/api_service.dart';
+import '../services/permission_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
 
@@ -23,23 +25,46 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   bool _isDeleting = false;
 
   Future<void> _changeProfilePhoto() async {
-    final hasPermission = await PermissionService.ensureGalleryPermission();
-    if (!hasPermission) {
+    if (!await PermissionService.hasGalleryReadAccess()) {
+      final granted = await PermissionService.requestGalleryPermission();
+      if (!granted) {
+        if (!mounted) return;
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text(
+              'Bez prístupu ku galérii nemôžeme zmeniť profilovú fotku.',
+            ),
+            backgroundColor: Color(0xFF8B1A2C),
+          ),
+        );
+        return;
+      }
+    }
+
+    XFile? pickedFile;
+    try {
+      pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1200,
+        requestFullMetadata: false,
+      );
+    } on PlatformException catch (e) {
       if (!mounted) return;
+      final denied = e.code == 'photo_access_denied' ||
+          (e.message?.toLowerCase().contains('permission') ?? false);
       context.showLatestSnackBar(
-        const SnackBar(
-          content: Text('Povoľ prístup ku galérii v nastaveniach aplikácie.'),
-          backgroundColor: Color(0xFF8B1A2C),
+        SnackBar(
+          content: Text(
+            denied
+                ? 'Prístup ku galérii bol zamietnutý. Môžete ho zmeniť v nastaveniach telefónu.'
+                : 'Nepodarilo sa otvoriť galériu.',
+          ),
+          backgroundColor: const Color(0xFF8B1A2C),
         ),
       );
       return;
     }
-
-    final pickedFile = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1200,
-    );
     if (pickedFile == null || !mounted) return;
 
     setState(() => _isUploading = true);
@@ -326,6 +351,10 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                     ],
                   ),
                 ),
+                if (kCrashlyticsDevTestUiVisible) ...[
+                  const SizedBox(height: 20),
+                  const CrashlyticsTestToolsCard(),
+                ],
               ],
             ),
           ),

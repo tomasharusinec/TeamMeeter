@@ -40,9 +40,16 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="teammeeter_notifications" />
+        <!--
+          FCM odporúča monochromatickú „status bar“ ikonu. @mipmap/ic_launcher tu
+          spôsobil, že sa zobrazila ako biely štvorec na niektorých zariadeniach,
+          a navyše sa s ňou pluginu `flutter_local_notifications` nehralo dobre
+          (ten chcel drawable a padol s invalid_icon). Použijeme jednotný
+          @drawable/ic_notification (vector, biela siluetka).
+        -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/ic_launcher" />
+            android:resource="@drawable/ic_notification" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

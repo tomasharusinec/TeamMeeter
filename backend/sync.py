@@ -5,6 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from psycopg2.extras import RealDictCursor
 from cryptography.fernet import Fernet
 from helper_func import db, get_current_user_id, is_group_member, check_permission, load_yaml, parse_client_deadline
+from activities import purge_expired_activities_and_notify
 from websocket_handler import broadcast_to_conversation, create_message_notification, get_db_connection, create_activity_notification
 
 sync_blueprint = Blueprint('sync', __name__)
@@ -22,6 +23,11 @@ def sync_pull():
 
     if current_user_id is None:
         return {"message": "User not found!"}, 401
+
+    try:
+        purge_expired_activities_and_notify(force=True)
+    except Exception as exc:
+        print(f"purge_expired_activities_and_notify (sync_pull): {exc}")
 
     last_message_id = request.args.get("last_message_id", 0, type=int)
     last_activity_id = request.args.get("last_activity_id", 0, type=int)

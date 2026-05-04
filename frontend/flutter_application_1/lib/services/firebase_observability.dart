@@ -3,14 +3,19 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart' show FlutterError, PlatformDispatcher, kDebugMode;
 
+import '../dev/crashlytics_debug.dart' show kCrashlyticsInDebugDefine;
+
 /// Firebase Analytics + Crashlytics (PVP5). Call once after [WidgetsFlutterBinding.ensureInitialized].
+///
+/// Crashlytics je v debug móde defaultne vypnutý. Na test: spusti s
+/// `--dart-define=CRASHLYTICS_IN_DEBUG=true` a použij panel v nastaveniach profilu.
 Future<void> configureFirebaseObservability() async {
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
   }
 
   await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
-    !kDebugMode,
+    !kDebugMode || kCrashlyticsInDebugDefine,
   );
 
   FlutterError.onError = (details) {

@@ -89,6 +89,18 @@ def _migrate_group_capacity_column(cursor, conn):
     print('Migration finished: "group".capacity added.')
 
 
+def _ensure_activity_deadline_expiry_index(cursor, conn):
+    """Rýchle vyhľadanie `deadline <= now` pre worker / sync_pull (bez full scan tabuľky)."""
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_activity_deadline_for_expiry
+        ON activity (deadline)
+        WHERE deadline IS NOT NULL;
+        """
+    )
+    conn.commit()
+
+
 def _migrate_notification_tables(cursor, conn):
     cursor.execute(
         """
@@ -283,6 +295,7 @@ def init_db():
             _migrate_activity_deadline_column(cursor, conn)
             _migrate_activity_status_column(cursor, conn)
             _migrate_group_capacity_column(cursor, conn)
+            _ensure_activity_deadline_expiry_index(cursor, conn)
             _migrate_notification_tables(cursor, conn)
             _migrate_push_token_table(cursor, conn)
             _ensure_user_push_token_token_unique(cursor, conn)

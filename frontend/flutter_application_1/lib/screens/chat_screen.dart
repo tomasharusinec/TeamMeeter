@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 import '../services/api_service.dart';
+import '../services/permission_service.dart';
 import '../services/teammeeter_analytics.dart';
 import '../utils/snackbar_utils.dart';
 
@@ -859,6 +860,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendFile() async {
     if (_isUploadingFile) return;
+    if (!await PermissionService.hasGalleryReadAccess()) {
+      final granted = await PermissionService.requestGalleryPermission();
+      if (!granted) {
+        if (!mounted) return;
+        context.showLatestSnackBar(
+          const SnackBar(
+            content: Text(
+              'Bez prístupu ku súborom a médiám nemôžete priložiť prílohu.',
+            ),
+            backgroundColor: Color(0xFF8B1A2C),
+          ),
+        );
+        return;
+      }
+    }
     final result = await FilePicker.platform.pickFiles(withData: false);
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
