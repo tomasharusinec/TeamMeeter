@@ -1,3 +1,10 @@
+// Jedna vrstva so zoznamom priamych konverzácií aj druhá s detailom otvoreného chatu používateľa.
+// Rieši vytvorenie chatu, mazanie konverzácií, websocket, prílohy aj odosielanie správ cez offline frontu.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -20,7 +27,7 @@ class ConversationsScreen extends StatefulWidget {
     this.chatTabSelected = false,
   });
 
-  /// `true` keď je v Home záložka Chat vybrnutá ([IndexedStack] ju zobrazuje).
+  
   final bool chatTabSelected;
 
   @override
@@ -34,6 +41,8 @@ class ConversationsScreenState extends State<ConversationsScreen> {
   Timer? _pollWhileVisibleTimer;
 
   @override
+  // Tato funkcia pripravi zoznam konverzacii po otvoreni karty Chat.
+  // Spusti polling a prve nacitanie direct konverzacii.
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -43,6 +52,8 @@ class ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   @override
+  // Tato funkcia reaguje na prepnutie aktivnej chat zalozky.
+  // Podla viditelnosti zapne alebo vypne polling konverzacii.
   void didUpdateWidget(covariant ConversationsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.chatTabSelected != oldWidget.chatTabSelected) {
@@ -54,6 +65,8 @@ class ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   @override
+  // Tato funkcia zastavi polling timer pri odchode zo screenu.
+  // Zabrani opakovanym API volaniam na pozadi.
   void dispose() {
     _pollWhileVisibleTimer?.cancel();
     super.dispose();
@@ -61,6 +74,8 @@ class ConversationsScreenState extends State<ConversationsScreen> {
 
   static const Duration _conversationListPollInterval = Duration(seconds: 22);
 
+  // Tato funkcia drzi polling aktivny len ked je karta Chat otvorena.
+  // Pravidelne obnovuje zoznam konverzacii bez blokovania UI.
   void _syncPollTimerWithTabVisibility() {
     if (!mounted) return;
     if (widget.chatTabSelected) {
@@ -80,6 +95,8 @@ class ConversationsScreenState extends State<ConversationsScreen> {
     }
   }
 
+  // Tato funkcia otvori dialog na vytvorenie novej konverzacie.
+  // Zo vstupu vyberie nazov a participantov a odosle ich na backend.
   Future<void> _showCreateConversationDialog() async {
     final nameController = TextEditingController();
     final participantUsernamesController = TextEditingController();
@@ -256,7 +273,9 @@ class ConversationsScreenState extends State<ConversationsScreen> {
     return int.tryParse(raw?.toString() ?? '');
   }
 
-  /// Voliteľné obnovenie zoznamu (napr. po prepnutí na záložku Chat v HomeScreen).
+  
+  // Tato funkcia je verejny refresh zoznamu konverzacii pre rodicovsky screen.
+  // Vola interny loader bez blokujuceho spinnera.
   Future<void> reloadConversations() => _loadConversations(
         showLoadingIndicator: false,
         suppressErrorSnackBars: false,
@@ -302,6 +321,8 @@ class ConversationsScreenState extends State<ConversationsScreen> {
     }
   }
 
+  // Tato funkcia otvori spodne menu pre akcie nad konverzaciou.
+  // Aktuálne riesi mazanie konverzacie a aktualizuje lokalny zoznam.
   Future<void> _showConversationActions(Map<String, dynamic> conversation) async {
     final conversationId = _coerceDmConversationListId(conversation['id']);
     if (conversationId == null) return;
@@ -355,6 +376,8 @@ class ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   @override
+  // Tato funkcia vykresli obsah tabky konverzacii.
+  // Rieseny je loading stav, prazdny stav aj list s tlacidlom na novy chat.
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Center(
@@ -497,10 +520,10 @@ class ConversationsScreenState extends State<ConversationsScreen> {
 class ChatScreen extends StatefulWidget {
   final int conversationId;
   final String title;
-  /// Ak ide o chat skupiny, nastav [groupId] — umožní mazanie cudzích správ pri oprávnení
-  /// `delete_messages` / Manager (vrátane offline fronty rovnakým endpointom ako DM).
+  
+  
   final int? groupId;
-  /// Obnovenie zoznamu / detailu po pridaní účastníka do chatu.
+  
   final VoidCallback? onConversationMetadataChanged;
 
   const ChatScreen({
@@ -531,11 +554,13 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _participants = [];
   Map<String, dynamic>? _replyingTo;
-  /// Skupinový chat: mazanie správ iných ako vlastné (Manager alebo oprávnenie delete_messages).
+  
   bool _canDeleteOthersGroupMessages = false;
   late int _effectiveConversationId;
 
   @override
+  // Tato funkcia pripravi detail konkretneho chatu.
+  // Nastavi conversation id, nacita data a spusti udrzbu socket spojenia.
   void initState() {
     super.initState();
     _effectiveConversationId = widget.conversationId;
@@ -544,6 +569,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
+  // Tato funkcia zastavi maintenance timer a zavrie socket spojenie.
+  // Uvolni aj textovy a scroll controller po zatvoreni chatu.
   void dispose() {
     _connectionMaintenanceTimer?.cancel();
     _messageController.dispose();
@@ -594,6 +621,8 @@ class _ChatScreenState extends State<ChatScreen> {
     await _connectSocket();
   }
 
+  // Tato funkcia nacita spravy konverzacie a spoji ich s lokalnymi pending spravami.
+  // Po nacitani ulozi vysledok do cache a posunie zoznam na spodok.
   Future<void> _loadMessages({bool showBlockingLoader = true}) async {
     if (showBlockingLoader && mounted) setState(() => _isLoading = true);
     try {
@@ -617,6 +646,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Tato funkcia nacita participantov aktualnej konverzacie.
+  // Pouziva sa po otvoreni chatu aj po pridani noveho clena.
   Future<void> _loadParticipants() async {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
@@ -626,10 +657,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() => _participants = participants);
     } catch (_) {
-      // Keep chat functional even if participant list fails.
+      
     }
   }
 
+  // Tato funkcia overi, ci moze pouzivatel mazat cudzie spravy v skupinovom chate.
+  // Kontroluje roly aj permission delete_messages.
   Future<void> _loadGroupMessageDeleteCapability() async {
     final gid = widget.groupId;
     if (gid == null) return;
@@ -672,7 +705,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       if (mounted) setState(() => _canDeleteOthersGroupMessages = can);
     } catch (_) {
-      // Offline / chyba API — ostane len mazanie vlastných správ.
+      
     }
   }
 
@@ -767,8 +800,8 @@ class _ChatScreenState extends State<ChatScreen> {
             _messages.any((m) => m['is_local_pending'] == true);
         final syncedAny = await api.syncPendingChatOperations();
         final idChanged = await _reconcileConversationId();
-        // Frontu môže vyčistiť aj sync z iného miesta (napr. getGroups); vtedy
-        // syncedAny je false ale lokálne pending ešte treba zlúčiť so serverom.
+        
+        
         if (mounted && (syncedAny || hadLocalPending || idChanged)) {
           await _loadMessages(showBlockingLoader: false);
           if (widget.groupId != null) {
@@ -779,13 +812,15 @@ class _ChatScreenState extends State<ChatScreen> {
           await _connectSocket();
         }
       } catch (_) {
-        // Keep trying on next tick without breaking chat UI.
+        
       } finally {
         _isSyncingPendingChatOps = false;
       }
     });
   }
 
+  // Tato funkcia otvori dialog na pridanie dalsieho ucastnika do chatu.
+  // Po uspesnom pridani obnovi participantov a metadata konverzacie.
   Future<void> _addParticipantDialog() async {
     final usernameController = TextEditingController();
     await showDialog<void>(
@@ -858,6 +893,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // Tato funkcia odosle subor ako prilohu spravy.
+  // Pri vypadku siete ulozi odoslanie offline a doplni lokalny pending zaznam.
   Future<void> _sendFile() async {
     if (_isUploadingFile) return;
     if (!await PermissionService.hasGalleryReadAccess()) {
@@ -1002,6 +1039,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Tato funkcia odosle textovu spravu alebo reply.
+  // Ak socket nie je dostupny, spravu zaradi do offline fronty.
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
@@ -1079,6 +1118,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Tato funkcia prida lokalnu pending spravu do UI okamzite po odoslani.
+  // Uzivatel vidi spravu hned, aj ked server ju potvrdi az neskor.
   void _addLocalPendingMessage(String text) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final user = auth.user;
@@ -1298,6 +1339,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Tato funkcia otvori akcie nad konkretnou spravou (reply alebo delete).
+  // Podla vyberu bud pripravi reply rezim, alebo vykona mazanie spravy.
   Future<void> _showMessageActions(Map<String, dynamic> message) async {
     final currentUserId = Provider.of<AuthProvider>(
       context,
@@ -1395,6 +1438,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
+  // Tato funkcia vykresli detail chat konverzacie.
+  // Obsahuje app bar, zoznam sprav, reply panel a composer na odoslanie spravy.
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final currentUserId = authProvider.user?.idRegistration;

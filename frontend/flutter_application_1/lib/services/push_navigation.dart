@@ -1,3 +1,10 @@
+// Spája dáta zo systémovej push správy so skutočnou navigáciou v aplikácii TeamMeeter.
+// Ak ešte navigator alebo prihlásenie nie sú hotové správu podrží a doručí až keď je aplikácia pripravená.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:async';
 import 'dart:developer' as developer;
 
@@ -9,15 +16,15 @@ import '../screens/chat_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../services/teammeeter_analytics.dart';
 
-/// Central router that turns FCM (or local-notification) tap payloads into
-/// concrete in-app navigation actions.
-///
-/// Past attempts coupled this logic to `HomeScreen` — when the app was launched
-/// cold from a tap, or the user was deep in a non-Home route, the listener
-/// either ran too late (initial-tap data was already consumed) or never
-/// observed the tap at all. This module centralises the routing on top of a
-/// global [GlobalKey<NavigatorState>] so any tap source ends up calling the
-/// same navigator regardless of which screen happens to be on top.
+
+
+
+
+
+
+
+
+
 class PushNavigator {
   PushNavigator._();
 
@@ -29,24 +36,24 @@ class PushNavigator {
   AuthProvider? _watchedAuth;
   bool _appReady = false;
 
-  /// Volá `main()` ihneď po vytvorení `rootNavigatorKey`. Sám o sebe ešte
-  /// nestačí — `currentState` GlobalKey-a je `null`, kým sa nenamountuje
-  /// `MaterialApp`. Skutočné odblokovanie pending tap-u robí
-  /// [notifyAppReady], ktorú volá `_MyAppState.initState` cez
-  /// post-frame callback.
+  
+  
+  
+  
+  
   void attach(GlobalKey<NavigatorState> navigatorKey) {
     _navigatorKey = navigatorKey;
   }
 
-  /// Volaj z koreňového widgetu po prvom vykreslení rámu — vtedy je
-  /// `rootNavigatorKey.currentState` zaručene pripravený a môžeme prehrať
-  /// cold-start tap, ktorý sa nahromadil v `main()` (kým ešte navigator
-  /// neexistoval).
+  
+  
+  
+  
   void notifyAppReady() {
     _appReady = true;
     if (_pendingData == null) return;
     if ((_navigatorKey?.currentState) == null) {
-      // Veľmi zriedkavé — navigator stále neprišiel. Skúsime ďalší rám.
+      
       _log('notifyAppReady: navigator still null, retry next frame');
       WidgetsBinding.instance.addPostFrameCallback((_) => notifyAppReady());
       return;
@@ -57,9 +64,9 @@ class PushNavigator {
     scheduleMicrotask(() => dispatch(data));
   }
 
-  /// Single entry point used by [PushNotificationService] when a tap is
-  /// detected (foreground local-notification tap, background tap that
-  /// re-opened the app, or terminated cold-start tap).
+  
+  
+  
   Future<void> dispatch(Map<String, dynamic> data) async {
     if (data.isEmpty) return;
     final navigator = _navigatorKey?.currentState;
@@ -70,10 +77,10 @@ class PushNavigator {
         'dispatch: navigator not ready (appReady=$_appReady) — buffering '
         'until notifyAppReady fires',
       );
-      // Najmä cold-start: ked sa app ešte len bootuje, čakáme na prvý frame
-      // `MaterialApp`-u. Po vykreslení sa zavolá `notifyAppReady` a buffer
-      // sa odošle. Ak by `notifyAppReady` z nejakého dôvodu nikdy nenastala,
-      // pridáme post-frame poistku.
+      
+      
+      
+      
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_pendingData != null) {
           notifyAppReady();
@@ -196,6 +203,8 @@ class PushNavigator {
     );
   }
 
+  // Tato funkcia spravi navigaciu medzi obrazovkami.
+  // Pred prechodom pripravi potrebne data.
   Future<void> _openNotificationsList(NavigatorState navigator) async {
     unawaited(
       TeamMeeterAnalytics.instance.logPushNotificationOpen(
@@ -218,9 +227,9 @@ class PushNavigator {
   }
 
   static void _log(String message) {
-    // Logujeme do oboch kanálov: `developer.log` pre DevTools a `debugPrint`
-    // pre štandardnú konzolu `flutter run` / Android Studia. Pri ladení push
-    // notifikácií je dôležité vidieť tok aj bez otvoreného DevTools.
+    
+    
+    
     developer.log(message, name: 'TeamMeeterPushNav');
     debugPrint('[TeamMeeterPushNav] $message');
   }

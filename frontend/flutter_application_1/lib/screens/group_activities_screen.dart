@@ -1,3 +1,10 @@
+// Zoznam aktivít patriacich jednej konkrétnej skupine ktorú používateľ práve sleduje.
+// Odtiaľ vidí detaily úlohy alebo otvára dialóg na vytvorenie novej aktivity v skupine.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -26,11 +33,15 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
   bool _isLoading = true;
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     _loadActivities();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadActivities() async {
     if (mounted) setState(() => _isLoading = true);
     try {
@@ -65,6 +76,8 @@ class _GroupActivitiesScreenState extends State<GroupActivitiesScreen> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(

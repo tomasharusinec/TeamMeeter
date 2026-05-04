@@ -1,24 +1,33 @@
+// Pomôcky na testovanie hlásení Firebase Crashlytics počas vývoja.
+// Umožní zámerne spustiť pád alebo neštandardnú výnimku kvôli overeniu nastavení.
+// This file was generated using AI (Gemini)
+
+
+
+
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 
-/// Musí sedieť s [configureFirebaseObservability]: `flutter run --dart-define=CRASHLYTICS_IN_DEBUG=true`
+
 const bool kCrashlyticsInDebugDefine = bool.fromEnvironment(
   'CRASHLYTICS_IN_DEBUG',
   defaultValue: false,
 );
 
-/// Test UI a volania [FirebaseCrashlytics.instance.crash] len v debug buildoch
-/// a len keď vývojár explicitne zapne compile-time flag.
+
+
 bool get kCrashlyticsDevTestUiVisible => kDebugMode && kCrashlyticsInDebugDefine;
 
-/// Panel v nastaveniach — v release alebo bez flagu sa vôbec nevykreslí.
+
 class CrashlyticsTestToolsCard extends StatelessWidget {
   const CrashlyticsTestToolsCard({super.key});
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     if (!kCrashlyticsDevTestUiVisible) {
       return const SizedBox.shrink();

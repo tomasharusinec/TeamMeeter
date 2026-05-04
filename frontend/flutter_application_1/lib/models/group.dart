@@ -1,3 +1,10 @@
+// Jednoduchý model skupiny tímu používaný pri zobrazení a volaniach rozhrania.
+// Väčšinu polí mapuje zo servera aby sa dala skupina prehliadať a upravovať.
+// This file was generated using AI (Gemini)
+
+
+
+
 class Group {
   final int idGroup;
   final String name;
@@ -21,6 +28,8 @@ class Group {
     this.hasPendingSync = false,
   });
 
+  // Tato funkcia nacita objekt z JSON dat.
+  // Prevedie prijaty format na interny model.
   factory Group.fromJson(Map<String, dynamic> json) {
     return Group(
       idGroup: json['id_group'],

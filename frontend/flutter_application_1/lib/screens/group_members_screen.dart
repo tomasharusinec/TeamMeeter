@@ -1,3 +1,10 @@
+// Zoznam členov konkrétnej skupiny používateľa s vyhľadávaním a rýchlym prehľadom účtov.
+// Odtiaľ sa dá vstúpiť do detailu člena alebo vykonať skupinové úpravy kde to oprávnenia dovolujú.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -27,17 +34,23 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
   int? _removingUserId;
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     _loadMembers();
   }
 
   @override
+  // Tato funkcia uprace zdroje pred zatvorenim obrazovky.
+  // Zastavi listenery, timery alebo controllery.
   void dispose() {
     _usernameController.dispose();
     super.dispose();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadMembers() async {
     setState(() => _isLoading = true);
     try {
@@ -58,6 +71,8 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
     }
   }
 
+  // Tato funkcia vytvori novu polozku.
+  // Po uspesnom vytvoreni obnovi zoznam alebo UI.
   Future<void> _addMember() async {
     final username = _usernameController.text.trim();
     if (username.isEmpty) return;
@@ -94,6 +109,8 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _removeMember(Map<String, dynamic> member) async {
     final userId = member['id_registration'] as int?;
     if (userId == null) return;
@@ -185,6 +202,8 @@ class _GroupMembersScreenState extends State<GroupMembersScreen> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final currentUserId = Provider.of<AuthProvider>(
       context,

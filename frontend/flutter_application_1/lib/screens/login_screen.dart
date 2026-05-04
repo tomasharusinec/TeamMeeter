@@ -1,3 +1,10 @@
+// Obrazovka na prihlásenie pomocou používateľského mena a hesla.
+// Po úspešnom overení uloží token a používateľa presunie ďalej do aplikácie TeamMeeter.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +32,8 @@ class _LoginScreenState extends State<LoginScreen>
   late final Future<void> _googleInitFuture;
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     const webClientId = String.fromEnvironment(
@@ -47,6 +56,8 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   @override
+  // Tato funkcia uprace zdroje pred zatvorenim obrazovky.
+  // Zastavi listenery, timery alebo controllery.
   void dispose() {
     _animController.dispose();
     _usernameController.dispose();
@@ -54,6 +65,8 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _submit() async {
     if (_formKey.currentState!.validate()) {
       try {
@@ -91,8 +104,8 @@ class _LoginScreenState extends State<LoginScreen>
     GoogleSignInAccount account = await authenticate();
     GoogleSignInAuthentication auth = account.authentication;
     String? idToken = auth.idToken;
-    // First pick of a freshly added Google account on device sometimes returns
-    // an empty id_token; one short retry after sign-out usually fixes it.
+    
+    
     if (idToken == null || idToken.isEmpty) {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       if (!mounted) return null;
@@ -152,6 +165,8 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final gradientColors = AppColors.screenGradient(context);
     final textColor = AppColors.textPrimary(context);
@@ -179,7 +194,7 @@ class _LoginScreenState extends State<LoginScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const SizedBox(height: 20),
-                          // Logo
+                          
                           const TeamMeeterLogo(),
                           const SizedBox(height: 12),
                           Text(
@@ -201,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                           const SizedBox(height: 24),
-                          // Username field
+                          
                           _buildInputField(
                             controller: _usernameController,
                             hintText: 'Enter user name or email',
@@ -213,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen>
                             },
                           ),
                           const SizedBox(height: 12),
-                          // Password field
+                          
                           _buildInputField(
                             controller: _passwordController,
                             hintText: 'Enter password',
@@ -264,7 +279,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                           const SizedBox(height: 24),
-                          // Sign in button
+                          
                           _buildButton(
                             text: 'Sign in',
                             onPressed: authProvider.isLoading ? null : _submit,
@@ -428,12 +443,14 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
-/// Reusable TeamMeeter logo widget matching the Figma calendar+camera design
+
 class TeamMeeterLogo extends StatelessWidget {
   final double size;
   const TeamMeeterLogo({super.key, this.size = 72});
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final ink = AppColors.isDark(context)
         ? Colors.white

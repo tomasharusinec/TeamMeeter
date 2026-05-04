@@ -1,3 +1,10 @@
+// Tento súbor je vstupná časť celej aplikácie TeamMeeter.
+// Spustí Flutter, inicializuje Firebase na pozadí, push službu a prvý viditeľný widget.
+// This file was generated using AI (Gemini)
+
+
+
+
 import 'dart:developer' as developer;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -13,19 +20,21 @@ import 'services/firebase_observability.dart';
 import 'services/push_navigation.dart';
 import 'services/push_notification_service.dart';
 
-/// Globálny navigátor — push notifikácia na chat môže prísť kedykoľvek (cold
-/// start, background, foreground), preto musíme vedieť navigovať aj bez
-/// `BuildContext`-u konkrétneho widgetu (napr. ked je používateľ v inej
-/// konverzácii / na inej obrazovke).
+
+
+
+
 final GlobalKey<NavigatorState> rootNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
 
+// Tato funkcia je vstupny bod celej appky.
+// Zapne Firebase veci, pripravi notifikacie a potom spusti hlavny widget.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  // Naviazať globálny navigator EŠTE PRED `ensureInitialized()`, aby sa cold-start
-  // tap (`getInitialMessage`) neztratil — `PushNavigator` ho buď hneď vykoná
-  // (ked už existuje navigator + auth), alebo si ho odloží do bufferu.
+  
+  
+  
   PushNavigator.instance.attach(rootNavigatorKey);
   var navigatorObservers = <NavigatorObserver>[];
   try {
@@ -63,17 +72,19 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   @override
+  // Tato funkcia po prvom vykresleni spracuje notifikaciu, ktorou sa appka otvorila.
+  // Az potom povoli navigaciu na cielovu obrazovku z push spravy.
   void initState() {
     super.initState();
-    // Po prvom vykreslení `MaterialApp`-u má `rootNavigatorKey.currentState`
-    // už hodnotu — vtedy spustíme dve veci:
-    //   1) `consumeInitialMessage()` — pýtame sa FCM pluginu na cold-start
-    //      tap AŽ TERAZ. `firebase_messaging` na Androide má známu chybu,
-    //      že volanie ešte v `main()` pred `runApp()` často vráti `null`
-    //      (plugin nestihol prečítať launch intent) a payload sa už nedá
-    //      získať. Volanie z post-frame callbacku to obchádza.
-    //   2) `notifyAppReady()` — keby `consumeInitialMessage` predsa len
-    //      bežal predčasne (paralelný tap, retry, …), prehrá sa buffer.
+    
+    
+    
+    
+    
+    
+    
+    
+    
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await PushNotificationService.instance.consumeInitialMessage();
@@ -90,6 +101,8 @@ class _MyAppState extends State<MyApp> {
   }
 
   @override
+  // Tato funkcia zlozi koren aplikacie.
+  // Nastavi providery, svetlu/tmavu temu a hlavny router aplikacie.
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
@@ -164,6 +177,8 @@ class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
+  // Tato funkcia rozhodne, ktoru uvodnu obrazovku ma uzivatel vidiet.
+  // Podla stavu prihlasenia vrati loading, home alebo login screen.
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
@@ -192,6 +207,8 @@ class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
   late final AnimationController _controller;
 
   @override
+  // Tato funkcia pripravi animaciu pre uvodny loading.
+  // Kontroler spusti pulzovanie loga, kym sa nacitava autentifikacia.
   void initState() {
     super.initState();
     _controller = AnimationController(
@@ -201,12 +218,16 @@ class _EpicLoadingScreenState extends State<_EpicLoadingScreen>
   }
 
   @override
+  // Tato funkcia uvolni animacny kontroler.
+  // Zabrani tomu, aby bezal aj po odchode z obrazovky.
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
   @override
+  // Tato funkcia vykresli loading obrazovku s animovanym logom.
+  // Pouziva animacny stav na efekt zvacsenia a jemneho ziarenia.
   Widget build(BuildContext context) {
     final gradientColors = AppColors.screenGradient(context);
     final dark = AppColors.isDark(context);

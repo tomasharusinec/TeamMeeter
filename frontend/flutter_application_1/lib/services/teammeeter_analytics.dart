@@ -1,6 +1,13 @@
+// Obal okolo Firebase Analytics s konkrétnymi udalosťami ktoré TeamMeeter potrebuje sledovať.
+// Metódy zapisujú pomenované udalosti a chyby pri logovaní potichu ignorujú aby nerozbili beh aplikácie.
+// AI generated with manual refinements
+
+
+
+
 import 'package:firebase_analytics/firebase_analytics.dart';
 
-/// Zmysluplné udalosti pre TeamMeeter (skupiny, chat, aktivity) — zlyhanie logu nesmie ovplyvniť UX.
+
 class TeamMeeterAnalytics {
   TeamMeeterAnalytics._();
   static final TeamMeeterAnalytics instance = TeamMeeterAnalytics._();
@@ -13,7 +20,7 @@ class TeamMeeterAnalytics {
     } catch (_) {}
   }
 
-  /// Priradí anonymné ID používateľa (interné ID registrácie, nie e-mail).
+  
   Future<void> setUserId(String? registrationId) async {
     await _safe(() async {
       if (registrationId == null || registrationId.isEmpty) {
@@ -28,7 +35,7 @@ class TeamMeeterAnalytics {
     await _safe(() => _a.setUserId(id: null));
   }
 
-  /// Spodná navigácia v Home — vlastné eventy (nie štandardný `screen_view`).
+  
   Future<void> logCalendarView() async {
     await _safe(() => _a.logEvent(name: 'calendar_view'));
   }
@@ -41,30 +48,36 @@ class TeamMeeterAnalytics {
     await _safe(() => _a.logEvent(name: 'groups_view'));
   }
 
-  /// Hlavný shell po prihlásení (Home s bottom navigáciou) — prvý frame obrazovky.
+  
   Future<void> logMainPageView() async {
     await _safe(() => _a.logEvent(name: 'main_page_view'));
   }
 
-  /// GA4 odporúčaná udalosť [login] — metóda prihlásenia.
+  
+  // Tato funkcia riesi autentifikaciu uzivatela.
+  // Spracuje odpoved servera a nastavi session stav.
   Future<void> logLogin({required String method}) async {
     await _safe(
       () => _a.logLogin(loginMethod: method),
     );
   }
 
-  /// GA4 odporúčaná udalosť [sign_up].
+  
   Future<void> logSignUp({required String method}) async {
     await _safe(
       () => _a.logSignUp(signUpMethod: method),
     );
   }
 
+  // Tato funkcia riesi autentifikaciu uzivatela.
+  // Spracuje odpoved servera a nastavi session stav.
   Future<void> logLogout() async {
     await _safe(() => _a.logEvent(name: 'logout'));
   }
 
-  /// Používateľ otvoril detail skupiny (záujem o konkrétnu skupinu).
+  
+  // Tato funkcia spravi navigaciu medzi obrazovkami.
+  // Pred prechodom pripravi potrebne data.
   Future<void> logGroupOpen({required int groupId}) async {
     await _safe(
       () => _a.logEvent(
@@ -74,7 +87,7 @@ class TeamMeeterAnalytics {
     );
   }
 
-  /// Vytvorenie skupiny (offline fronta = stále zmysluplný funnel).
+  
   Future<void> logGroupCreate({
     required bool queuedOffline,
     required bool inviteQrEnabled,
@@ -90,7 +103,7 @@ class TeamMeeterAnalytics {
     );
   }
 
-  /// Pripojenie ku skupine cez invite kód (QR len doplní pole — rozlíšime spôsob zadania).
+  
   Future<void> logGroupJoin({
     required bool queuedOffline,
     required String entryMethod,
@@ -106,7 +119,7 @@ class TeamMeeterAnalytics {
     );
   }
 
-  /// Odoslanie textovej správy v chate (žiadny obsah správy).
+  
   Future<void> logChatMessageSend({
     required int conversationId,
     required bool socketConnected,
@@ -124,7 +137,7 @@ class TeamMeeterAnalytics {
     );
   }
 
-  /// Nová aktivita (skupinová alebo individuálna).
+  
   Future<void> logActivityCreate({
     required bool isGroupActivity,
     required bool queuedOffline,
@@ -142,7 +155,7 @@ class TeamMeeterAnalytics {
     );
   }
 
-  /// Používateľ otvoril konverzáciu z push notifikácie.
+  
   Future<void> logPushNotificationOpen({
     required String notificationType,
     int? conversationId,

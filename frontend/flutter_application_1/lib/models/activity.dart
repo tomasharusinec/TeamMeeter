@@ -1,3 +1,10 @@
+// Dátová trieda aktivity tímu používaná v kalendári aj v skupinových zoznamoch úloh.
+// Drží číselný identifikátor, názov, stav, termín aj príznaky offline synchronizácie.
+// This file was generated using AI (Gemini)
+
+
+
+
 import 'dart:io';
 
 class Activity {
@@ -27,6 +34,8 @@ class Activity {
     this.hasPendingSync = false,
   });
 
+  // Tato funkcia nacita objekt z JSON dat.
+  // Prevedie prijaty format na interny model.
   factory Activity.fromJson(Map<String, dynamic> json) {
     final raw = (json['status']?.toString() ?? '').toLowerCase().trim();
     final normalizedStatus = switch (raw) {

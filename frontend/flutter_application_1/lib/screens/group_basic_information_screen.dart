@@ -1,3 +1,10 @@
+// Editácia hlavných údajov o skupine vrátane názvu obrázku a krátkeho textového predstavenia tímu.
+// Kontroluje oprávnenia používateľa a zmeny odošle cez aplikačný API klient s upozornením výsledku.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,18 +39,24 @@ class _GroupBasicInformationScreenState
   Group? _group;
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     _load();
   }
 
   @override
+  // Tato funkcia uprace zdroje pred zatvorenim obrazovky.
+  // Zastavi listenery, timery alebo controllery.
   void dispose() {
     _nameController.dispose();
     _capacityController.dispose();
     super.dispose();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
@@ -68,6 +81,8 @@ class _GroupBasicInformationScreenState
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _save() async {
     if (!_formKey.currentState!.validate() || _group == null) return;
     setState(() => _isSaving = true);
@@ -186,6 +201,8 @@ class _GroupBasicInformationScreenState
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _removeIcon() async {
     if (_group == null) return;
     setState(() => _isIconLoading = true);
@@ -220,6 +237,8 @@ class _GroupBasicInformationScreenState
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final token = authProvider.token;
@@ -506,6 +525,8 @@ class _InfoTile extends StatelessWidget {
   const _InfoTile({required this.label, required this.value});
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
@@ -557,6 +578,8 @@ class _GroupIconPreview extends StatelessWidget {
   });
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     final imageUrl = '${ApiService.baseUrl}/groups/$groupId/icon';

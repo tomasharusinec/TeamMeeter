@@ -1,3 +1,10 @@
+// Hlavný výber skupiny kde sa používateľ pohybuje medzi základom členmi rolami aktivitami pozvánkami.
+// Jednotlivé záložky zdieľajú identifikátor skupiny a používajú jeden spoločný API klient aplikácie.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -30,6 +37,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   Group? _fullGroup;
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -42,6 +51,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     _loadGroupDetails();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadGroupDetails() async {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
@@ -49,10 +60,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       if (!mounted) return;
       setState(() => _fullGroup = group);
     } catch (_) {
-      // Ostáva widget.group; prístup ku aktivitám sa overí až pri otvorení obrazovky aktivít.
+      
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _deleteGroup() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -175,6 +188,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -482,6 +497,8 @@ class _OptionButton extends StatelessWidget {
   });
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
@@ -535,6 +552,8 @@ class _GroupAvatar extends StatelessWidget {
   });
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
     final imageUrl = '${ApiService.baseUrl}/groups/$groupId/icon';

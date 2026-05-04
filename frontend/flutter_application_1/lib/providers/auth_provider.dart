@@ -1,3 +1,10 @@
+// Poskytovateľ stavu pre práve prihláseného používateľa a čerstvého autorizačného tokenu.
+// Obaluje registráciu, prihlásenie, uchovanie tokenu a odhlásenie nad backend rozhraním aplikácie.
+// This file was generated using AI (Gemini)
+
+
+
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -46,6 +53,8 @@ class AuthProvider with ChangeNotifier {
     );
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<void> _runPushTokenSyncAfterAuth() async {
     try {
       await PushNotificationService.instance.syncPushTokenWithBackend(_apiService);
@@ -68,6 +77,8 @@ class AuthProvider with ChangeNotifier {
         msg.contains('timed out');
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<User?> _loadCachedUser() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_userCacheKey);
@@ -79,11 +90,15 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _saveCachedUser(User user) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_userCacheKey, jsonEncode(user.toCacheJson()));
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> loadSavedToken() async {
     _isInitializing = true;
     notifyListeners();
@@ -134,8 +149,8 @@ class AuthProvider with ChangeNotifier {
       final id = _user!.idRegistration;
       await TeamMeeterAnalytics.instance.setUserId(id != null ? '$id' : null);
     }
-    // FCM registrácia potrebuje len JWT — volaj vždy keď je token, nie len keď je _user
-    // (inak po SSO / oneskorenom getCurrentUser ostane user_push_token prázdna).
+    
+    
     if (_token != null) {
       await _runPushTokenSyncAfterAuth();
     }
@@ -143,6 +158,8 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  // Tato funkcia riesi autentifikaciu uzivatela.
+  // Spracuje odpoved servera a nastavi session stav.
   Future<void> login(String username, String password) async {
     _isLoading = true;
     notifyListeners();
@@ -229,6 +246,8 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // Tato funkcia riesi autentifikaciu uzivatela.
+  // Spracuje odpoved servera a nastavi session stav.
   Future<void> loginWithGoogleIdToken(String idToken) async {
     _isLoading = true;
     notifyListeners();
@@ -259,6 +278,8 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // Tato funkcia riesi autentifikaciu uzivatela.
+  // Spracuje odpoved servera a nastavi session stav.
   Future<void> logout() async {
     _token = null;
     _user = null;
@@ -307,6 +328,8 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> refreshCurrentUser() async {
     if (_token == null) return;
     try {

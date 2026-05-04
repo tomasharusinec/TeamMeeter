@@ -1,3 +1,10 @@
+// Hlavná práca po prihlásení so zoznamom skupín a spodnou navigáciou medzi kartami.
+// Z tej istej vrstvy sa používateľ dostane ku kalendáru, oznámeniam, QR skenovaniu aj chatovému tabu aplikácie.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:async';
 import 'dart:io';
 
@@ -33,7 +40,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  int _currentNavIndex = 1; // Home is center/default
+  int _currentNavIndex = 1; 
   final GlobalKey<ConversationsScreenState> _conversationsScreenKey =
       GlobalKey<ConversationsScreenState>();
   List<Activity> _activities = [];
@@ -58,6 +65,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
@@ -96,6 +105,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
+  // Tato funkcia uprace zdroje pred zatvorenim obrazovky.
+  // Zastavi listenery, timery alebo controllery.
   void dispose() {
     PushNotificationService.instance.onForegroundMessageHandled = null;
     WidgetsBinding.instance.removeObserver(this);
@@ -105,6 +116,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
+  // Tato funkcia upravi existujuce data.
+  // Zmeny ulozi a pripravi ich pre zobrazenie.
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_loadActivities(showError: false));
@@ -121,10 +134,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _initPushNotifications() async {
-    // Routing po klepnutí na push notifikáciu rieši `PushNavigator` cez globálny
-    // navigator key — HomeScreen už nemusí registrovať vlastný listener (predtým
-    // sa to lámalo, ked appka nabehla skoro od cold-startu, alebo používateľ
-    // bol na inej obrazovke ako Home v čase doručenia tap-eventu).
+    
+    
+    
+    
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await PushNotificationService.instance.syncPushTokenWithBackend(
@@ -137,6 +150,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<void> _syncPushTokenSilently() async {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -146,6 +161,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
@@ -160,6 +177,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _refreshNotificationIndicator() async {
     try {
       if (!mounted) return;
@@ -168,10 +187,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _hasAnyNotifications = hasUnread);
     } catch (_) {
-      // Keep previous indicator state if refresh fails.
+      
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _refreshOfflineBannerState() async {
     if (!mounted) return;
     final api = Provider.of<AuthProvider>(context, listen: false).apiService;
@@ -184,6 +205,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<void> _runOfflineSyncInBackground() async {
     if (_offlineSyncRunning || !mounted) return;
     _offlineSyncRunning = true;
@@ -191,11 +214,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
       await api.syncPendingActivityOperations();
       final reachableAfter = await api.isServerReachable();
-      // My Tasks: priebežne z cache / servera
+      
       await _loadActivities(showError: false);
-      // Ak je backend dostupný, vždy stiahni čerstvý zoznam skupín (nie len pri
-      // zmenšení fronty) — HTTP „reachable“ pred/po synci často ostane true pri
-      // len lokálnom WiFi, takže samotný návrat siete rieši aj connectivity stream.
+      
+      
+      
       if (reachableAfter && mounted) {
         await _loadGroups(
           showError: false,
@@ -215,6 +238,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadActivities({bool showError = true}) async {
     final requestId = ++_activitiesLoadRequestId;
     try {
@@ -254,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final groups = await api.getGroups();
       if (!mounted) return;
       if (requestId != _groupsLoadRequestId) {
-        // Novší _loadGroups už dobehol skôr; ak zobrazil prázdny zoznam a my máme dáta, oprav to.
+        
         if (groups.isNotEmpty && _groups.isEmpty) {
           setState(() => _groups = groups);
           await _refreshOfflineBannerState();
@@ -286,6 +311,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -335,6 +362,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Widget _buildOfflineSyncBanner() {
     return Container(
       width: double.infinity,
@@ -357,7 +386,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Top App Bar ──────────────────────────────────────────
+  
   Widget _buildTopBar() {
     final user = Provider.of<AuthProvider>(context).user;
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
@@ -367,7 +396,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          // Notification bell
+          
           IconButton(
             onPressed: () async {
               await Navigator.of(context).push(
@@ -427,7 +456,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               size: 24,
             ),
           ),
-          // Profile avatar
+          
           GestureDetector(
             onTap: _showProfileMenu,
             child: Container(
@@ -455,7 +484,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Tasks / Activities View ──────────────────────────────
+  
   Widget _buildTasksView() {
     if (_isLoading) {
       return Center(
@@ -565,7 +594,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           child: Column(
             children: [
-              // Column header
+              
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
@@ -592,7 +621,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              // Task items
+              
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: activities.isEmpty
@@ -687,6 +716,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   void _showActivityDetail(Activity activity) {
     showDialog(
       context: context,
@@ -725,6 +756,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   void _showCompletedTasksDialog(List<Activity> completedActivities) {
     showDialog(
       context: context,
@@ -796,7 +829,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Groups View ──────────────────────────────────────────
+  
   Widget _buildCalendarView() {
     return CalendarScreen(groups: _groups, onDataChanged: _loadData);
   }
@@ -1115,7 +1148,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Profile Bottom Sheet ─────────────────────────────────
+  
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   void _showProfileMenu() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     showModalBottomSheet(
@@ -1240,7 +1275,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Create Group Dialog ──────────────────────────────────
+  
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   void _showJoinGroupDialog() {
     final codeController = TextEditingController();
     var inviteCodeAssistedByQr = false;
@@ -1397,6 +1434,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   void _showCreateGroupDialog() {
     final parentContext = this.context;
     final nameController = TextEditingController();
@@ -1655,7 +1694,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ── Bottom Navigation Bar matching Figma ─────────────────
+  
   Widget _buildBottomNav() {
     return Container(
       decoration: BoxDecoration(
@@ -1741,6 +1780,8 @@ class _GroupQrCodeScreen extends StatelessWidget {
   const _GroupQrCodeScreen({required this.qrCode});
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -1830,6 +1871,8 @@ class _QrScannerScreenState extends State<_QrScannerScreen> {
   String? _scannerError;
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     _initScanner();
@@ -1868,12 +1911,16 @@ class _QrScannerScreenState extends State<_QrScannerScreen> {
   }
 
   @override
+  // Tato funkcia uprace zdroje pred zatvorenim obrazovky.
+  // Zastavi listenery, timery alebo controllery.
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(

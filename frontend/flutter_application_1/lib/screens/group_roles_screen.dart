@@ -1,3 +1,10 @@
+// Správa vlastných rôl v rámci skupiny vrátane názvu farby a súboru povolených oprávnení.
+// Umožňuje pridať alebo upraviť rolu, vymazať rolu alebo ju odobrať konkrétnemu členovi skupiny.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:provider/provider.dart';
@@ -45,11 +52,15 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
   bool _isLoading = true;
 
   @override
+  // Tato funkcia spusti prve nacitanie rol a clenov skupiny.
+  // Bez tychto dat sa nedaju roly priradovat ani odoberat.
   void initState() {
     super.initState();
     _loadRoles();
   }
 
+  // Tato funkcia nacita zoznam rol aj zoznam clenov danej skupiny.
+  // Vysledok ulozi do stavu a prepne loading indikator.
   Future<void> _loadRoles() async {
     setState(() => _isLoading = true);
     try {
@@ -76,6 +87,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
     }
   }
 
+  // Tato funkcia otvori dialog na vytvorenie alebo upravu roly.
+  // Umoznuje zmenit nazov, farbu a prava a potom ich ulozit cez API.
   Future<void> _showRoleDialog({Role? role}) async {
     final nameController = TextEditingController(text: role?.name ?? '');
     final colorController = TextEditingController(text: role?.color ?? '');
@@ -363,6 +376,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
     );
   }
 
+  // Tato funkcia potvrdi a vymaze rolu zo skupiny.
+  // Po akcii obnovi data a ukaze, ci sa zmena vykonala online alebo offline.
   Future<void> _deleteRole(Role role) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -435,6 +450,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
     }
   }
 
+  // Tato funkcia otvori dialog na odobratie roly konkretnemu clenu.
+  // Pouzivatel vyberie clena aj rolu a zmena sa odosle na backend.
   Future<void> _showRemoveRoleDialog() async {
     if (_roles.isEmpty || _members.isEmpty) {
       context.showLatestSnackBar(
@@ -627,6 +644,8 @@ class _GroupRolesScreenState extends State<GroupRolesScreen> {
   }
 
   @override
+  // Tato funkcia vykresli spravu rol v skupine.
+  // Zobrazi loading, prazdny stav alebo zoznam rol s akciami.
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(

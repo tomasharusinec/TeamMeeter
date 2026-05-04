@@ -1,3 +1,10 @@
+// Služba ktorá nastavuje Firebase Cloud Messaging tokeny aj lokálne notifikácie na zariadení.
+// Rieši správy na pozadí aj v popredí kliknutie na notifikáciu a odoslanie FCM tokenu na backend.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -29,12 +36,12 @@ void _fcmLog(String message, [Object? error, StackTrace? stack]) {
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Samostatný isolate: nevolaj ensureInitialized() (FCM listenery + duplicitný handler).
+  
   await PushNotificationService.instance.ensureBgIsolateReady();
-  // Hybridná správa (notification + data) na Androide často nevyvolá spoľahlivý
-  // vlastný kód — systém ju má zobraziť sám (nie vždy viditeľné v OEM / kanáli).
-  // Pre „activity expired“ posiela backend `data_message_only` + push_title/body
-  // v `data` → `notification == null` → vždy zobrazíme lokálnu notifikáciu.
+  
+  
+  
+  
   if (message.notification == null) {
     await PushNotificationService.instance.showLocalFromRemoteMessage(message);
   }
@@ -60,13 +67,13 @@ class PushNotificationService {
   bool _initialMessageConsumed = false;
   StreamSubscription<String>? _tokenRefreshSubscription;
 
-  /// Po doručení FCM v popredí (po pokuse o lokálnu notifikáciu) — obnova úloh / badge.
+  
   void Function(Map<String, dynamic> data)? onForegroundMessageHandled;
 
-  /// Centralised dispatch — every entry point (foreground local-notif tap,
-  /// background tap, terminated cold-start tap) lands here. The router itself
-  /// buffers if Flutter / AuthProvider are not yet ready, so we don't have to
-  /// reimplement that here.
+  
+  
+  
+  
   Future<void> _handleTap(Map<String, dynamic> data, {required String source}) async {
     if (data.isEmpty) {
       _fcmLog('handleTap from $source: data IS EMPTY — ignoring tap');
@@ -76,7 +83,7 @@ class PushNotificationService {
     await PushNavigator.instance.dispatch(data);
   }
 
-  /// Minimálna inicializácia v headless isolate (FCM background); bez onMessage / duplicitného handlera.
+  
   Future<void> ensureBgIsolateReady() async {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp();
@@ -87,10 +94,10 @@ class PushNotificationService {
   Future<void> _setupLocalNotifications() async {
     if (_localNotificationsReady) return;
 
-    // POZN.: meno musí zodpovedať drawable resource v
-    // `android/app/src/main/res/drawable/ic_notification.xml`. Predtým tu bolo
-    // 'ic_launcher', čo je len **mipmap**, nie drawable — plugin to hodil ako
-    // `PlatformException(invalid_icon, …)` a celý FCM init sa zrútil.
+    
+    
+    
+    
     const androidSettings = AndroidInitializationSettings('ic_notification');
     const initializationSettings = InitializationSettings(
       android: androidSettings,
@@ -127,11 +134,11 @@ class PushNotificationService {
       await Firebase.initializeApp();
     }
 
-    // Lokálna notifikačná knižnica môže zlyhať (napr. „invalid_icon“), ALE
-    // nesmieme kvôli tomu zhodiť aj registráciu FCM stream-listenerov nižšie —
-    // bez nich `onMessageOpenedApp` nikdy nedorazí a tap na background-push
-    // by sa ticho zahodil. Lokálne notifikácie sú „nice to have“ pre foreground;
-    // navigácia po klepnutí ide cez Firebase listenery.
+    
+    
+    
+    
+    
     try {
       await _setupLocalNotifications();
     } catch (e, st) {
@@ -144,8 +151,8 @@ class PushNotificationService {
 
     try {
       FirebaseMessaging.onMessage.listen((RemoteMessage m) {
-        // V popredí Android/iOS často nezobrazia systémovú notifikáciu z FCM „notification“
-        // bloku — musíme ju spracovať lokálne (inak sa nič neukáže).
+        
+        
         _fcmLog('onMessage received (msgId=${m.messageId})');
         unawaited(_processForegroundRemoteMessage(m));
       });
@@ -190,13 +197,13 @@ class PushNotificationService {
     }
   }
 
-  /// Pýta sa na cold-start tap (FCM `getInitialMessage` + lokálna notifikácia,
-  /// ktorá launchla appku). Vyberá sa zámerne **až po tom**, čo je
-  /// `MaterialApp` namountovaná — `firebase_messaging` na Androide má známu
-  /// chybu, že keď `getInitialMessage()` zavoláš ešte v `main()` pred
-  /// `runApp()`, niekedy vráti `null` (plugin ešte nestihol prečítať launch
-  /// intent) a payload sa **už nikdy** nedá vyzdvihnúť (každý ďalší call
-  /// vracia `null`). Volanie z post-frame callbacku tomu prekáža.
+  
+  
+  
+  
+  
+  
+  
   Future<void> consumeInitialMessage() async {
     if (_initialMessageConsumed) {
       _fcmLog('consumeInitialMessage: skip (already consumed)');
@@ -268,6 +275,8 @@ class PushNotificationService {
     }
   }
 
+  // Tato funkcia vyziada alebo overi opravnenia.
+  // Vrati stav opravnenia pre dalsiu logiku.
   Future<void> requestPermissions() async {
     await FirebaseMessaging.instance.requestPermission(
       alert: true,
@@ -281,7 +290,7 @@ class PushNotificationService {
     RemoteMessage message, {
     bool foreground = false,
   }) async {
-    // Na pozadí systém sám zobrazí správy s FCM „notification“ — lokálne len data-only.
+    
     if (!foreground && message.notification != null) {
       return;
     }
@@ -299,7 +308,7 @@ class PushNotificationService {
         (pushBody != null && pushBody.isNotEmpty ? pushBody : null) ??
         _bodyFromData(type: type, data: message.data);
 
-    // Ignore unknown generic payloads to avoid "notification about notification".
+    
     if (body == null || body.trim().isEmpty) {
       return;
     }
@@ -452,6 +461,8 @@ class PushNotificationService {
     return null;
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<void> syncPushTokenWithBackend(ApiService apiService) async {
     _fcmLog('syncPushTokenWithBackend: start');
     if (!apiService.hasAuthToken) {
@@ -515,7 +526,7 @@ class PushNotificationService {
       _fcmLog('isSupported() check', e, st);
     }
 
-    // Po cold start niekedy getToken() zlyhá skôr, než sa viaže Play služba — krátky odklad.
+    
     await Future<void>.delayed(const Duration(milliseconds: 400));
 
     String? token;
@@ -571,7 +582,7 @@ class PushNotificationService {
   }
 
   String _redactPayload(Map<String, dynamic> data) {
-    // Nezapisuj telo správy do logu (môže obsahovať osobné dáta).
+    
     const sensitive = {'push_body', 'push_title'};
     final view = <String, String>{};
     for (final entry in data.entries) {

@@ -1,3 +1,10 @@
+// Nastavuje Crashlytics a Firebase Analytics aby sa zbierali pády aj základné udalosti používania.
+// Vystavuje firebaseAnalyticsObserver použiteľný v koreňovom MaterialApp ako pozorovateľ navigácie.
+// AI generated with manual refinements
+
+
+
+
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -5,10 +12,10 @@ import 'package:flutter/foundation.dart' show FlutterError, PlatformDispatcher, 
 
 import '../dev/crashlytics_debug.dart' show kCrashlyticsInDebugDefine;
 
-/// Firebase Analytics + Crashlytics (PVP5). Call once after [WidgetsFlutterBinding.ensureInitialized].
-///
-/// Crashlytics je v debug móde defaultne vypnutý. Na test: spusti s
-/// `--dart-define=CRASHLYTICS_IN_DEBUG=true` a použij panel v nastaveniach profilu.
+
+
+
+
 Future<void> configureFirebaseObservability() async {
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();

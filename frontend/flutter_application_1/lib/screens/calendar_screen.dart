@@ -1,3 +1,10 @@
+// Mesačný a týždenný prehľad aktivít používateľa v skupinách ktorých členstvo má.
+// Umožní kliknutie na aktivitu, jej detail alebo vytvorenie novej úlohy vo vybranej skupine.
+// This file was generated using AI (Gemini)
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -28,6 +35,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   static const _dayLabels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     final now = DateTime.now();
@@ -42,11 +51,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   @override
+  // Tato funkcia uprace zdroje pred zatvorenim obrazovky.
+  // Zastavi listenery, timery alebo controllery.
   void dispose() {
     _clockRefreshTimer?.cancel();
     super.dispose();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadActivities() async {
     final shouldShowBlockingLoader = _activities.isEmpty;
     if (shouldShowBlockingLoader) {
@@ -59,7 +72,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         setState(() => _activities = activities);
       }
     } catch (e) {
-      // show empty state
+      
     } finally {
       if (mounted && shouldShowBlockingLoader) {
         setState(() => _isLoading = false);
@@ -67,6 +80,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   List<DateTime> _getWeeksForMonth(DateTime month) {
     final firstDay = DateTime(month.year, month.month, 1);
     final firstMonday = firstDay.subtract(Duration(days: firstDay.weekday - 1));
@@ -108,6 +123,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return weeks[safeIndex];
   }
 
+  // Tato funkcia upravi existujuce data.
+  // Zmeny ulozi a pripravi ich pre zobrazenie.
   void _changeMonth(int delta) {
     final candidate = DateTime(
       _displayedMonth.year,
@@ -127,6 +144,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
+  // Tato funkcia upravi existujuce data.
+  // Zmeny ulozi a pripravi ich pre zobrazenie.
   void _changeWeek(int delta) {
     final weeks = _getWeeksForMonth(_displayedMonth);
     final nextIndex = _weekIndex + delta;
@@ -161,16 +180,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() => _weekIndex = nextIndex);
   }
 
-  /// Compute the ISO week number
+  
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   int _getWeekNumber(DateTime date) {
-    // ISO 8601: week starts Monday, week 1 contains Jan 4
+    
     final jan4 = DateTime(date.year, 1, 4);
     final jan4Monday = jan4.subtract(Duration(days: jan4.weekday - 1));
     final diff = date.difference(jan4Monday).inDays;
     return (diff / 7).floor() + 1;
   }
 
-  /// Get activities for a specific day
+  
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   List<Activity> _getActivitiesForDay(DateTime day) {
     final now = DateTime.now();
     return _activities.where((a) {
@@ -184,6 +207,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }).toList();
   }
 
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   void _showCreateActivityDialog() {
     showDialog(
       context: context,
@@ -198,6 +223,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final monthWeeks = _getWeeksForMonth(_displayedMonth);
     final weekStart = _currentWeekStart(monthWeeks);
@@ -215,7 +242,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               children: [
                 const SizedBox(height: 8),
 
-                // Week navigation
+                
                 _buildWeekNavigation(
                   weekNumber: weekNumber,
                   monthLabel: _formatMonthYear(_displayedMonth),
@@ -223,7 +250,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
                 const SizedBox(height: 16),
 
-                // Day rows
+                
                 if (_isLoading)
                   Padding(
                     padding: const EdgeInsets.only(top: 60),
@@ -250,7 +277,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ),
 
-        // FAB
+        
         Positioned(right: 20, bottom: 20, child: _buildFab()),
       ],
     );
@@ -415,7 +442,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          // Day label badge
+          
           Container(
             width: 56,
             height: 38,
@@ -474,7 +501,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
           const SizedBox(width: 8),
 
-          // Activity area
+          
           Expanded(
             child: Container(
               constraints: const BoxConstraints(minHeight: 38),
@@ -578,6 +605,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   void _showActivityDetail(Activity activity) {
     showDialog(
       context: context,

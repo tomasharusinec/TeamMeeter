@@ -1,3 +1,10 @@
+// Podrobný pohľad na jedného člena vybranej skupiny vrátane mena a používateľského účtu člena.
+// Vie načítať a upraviť role člena, ale len ak má prihlásený používateľ v tejto skupine dostatočné práva.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,7 +13,7 @@ import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 import '../utils/snackbar_utils.dart';
 
-/// Detail člena skupiny — priradenie rolí cez **Add role** (oprávnenie `add_role` alebo Manager).
+
 class GroupMemberDetailScreen extends StatefulWidget {
   final int groupId;
   final String groupName;
@@ -29,7 +36,7 @@ class _GroupMemberDetailScreenState extends State<GroupMemberDetailScreen> {
   List<Map<String, dynamic>> _memberRoles = [];
   List<Role> _allGroupRoles = [];
   bool _canAddRole = false;
-  /// Zaistenie proti tomu, aby starší async `_load` prepísal novší výsledok (prepínanie tam/späť, viac paralelných loadov).
+  
   int _loadGeneration = 0;
 
   int? get _memberUserId {
@@ -76,7 +83,7 @@ class _GroupMemberDetailScreenState extends State<GroupMemberDetailScreen> {
     return byId.values.toList();
   }
 
-  /// Po úspešnom assigne: doplní / opraví riadok, aby UI nezmizlo pri oneskorenom GET.
+  
   void _mergeAssignedRoleLocally(Role role) {
     if (!mounted) return;
     setState(() {
@@ -125,6 +132,8 @@ class _GroupMemberDetailScreenState extends State<GroupMemberDetailScreen> {
     return false;
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _load({bool showBlockingLoader = true}) async {
     final generation = ++_loadGeneration;
     if (showBlockingLoader && mounted) {
@@ -156,7 +165,7 @@ class _GroupMemberDetailScreenState extends State<GroupMemberDetailScreen> {
       final memberRoles = results[0] as List<Map<String, dynamic>>;
       final allRoles = results[1] as List<Role>;
 
-      /// Po await môže byť používateľ už v AuthProvider, hoci tesne pred tým bol null — inak by ostalo `_canAddRole == false`.
+      
       final authResolved =
           Provider.of<AuthProvider>(context, listen: false);
       final resolvedMyId = authResolved.user?.idRegistration;
@@ -196,6 +205,8 @@ class _GroupMemberDetailScreenState extends State<GroupMemberDetailScreen> {
     }
   }
 
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   Future<void> _showAssignRoleSheet() async {
     final username = widget.member['username']?.toString();
     if (username == null || username.isEmpty) return;
@@ -294,7 +305,7 @@ class _GroupMemberDetailScreenState extends State<GroupMemberDetailScreen> {
     );
   }
 
-  /// Len roly so zobrazeným menom — bez placeholder textu pri prázdnom zozname.
+  
   List<Widget> _roleChips(BuildContext context) {
     final out = <Widget>[];
     for (final r in _memberRoles) {
@@ -380,12 +391,16 @@ class _GroupMemberDetailScreenState extends State<GroupMemberDetailScreen> {
   }
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     _load();
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final roleChips = _roleChips(context);
     return Scaffold(

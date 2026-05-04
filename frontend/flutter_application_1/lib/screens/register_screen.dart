@@ -1,3 +1,10 @@
+// Formulár na registráciu nového účtu s kontrolami polí osobných údajov a hesla.
+// Po úspešnej registrácii presmeruje používateľa priamo na domovskú obrazovku aplikácie.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -28,6 +35,8 @@ class _RegisterScreenState extends State<RegisterScreen>
   late Animation<double> _fadeAnimation;
 
   @override
+  // Tato funkcia pripravi animaciu pre plynule zobrazenie registra formu.
+  // Hned po otvoreni pusti fade efekt celeho obsahu.
   void initState() {
     super.initState();
     _animController = AnimationController(
@@ -42,6 +51,8 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   @override
+  // Tato funkcia zavrie controllery textovych poli a animacie.
+  // Predide unikom pamate po odchode zo screenu.
   void dispose() {
     _animController.dispose();
     _firstnameController.dispose();
@@ -93,6 +104,8 @@ class _RegisterScreenState extends State<RegisterScreen>
     }
   }
 
+  // Tato funkcia odosle registracny formular na backend.
+  // Pri uspechu prepne uzivatela na domovsku obrazovku, pri chybe ukaze hlasku.
   Future<void> _submit() async {
     if (_formKey.currentState!.validate()) {
       try {
@@ -128,6 +141,8 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   @override
+  // Tato funkcia vykresli celu registracnu obrazovku.
+  // Posklada pole formulara, validacie a tlacidlo na vytvorenie uctu.
   Widget build(BuildContext context) {
     final gradientColors = AppColors.screenGradient(context);
     final textColor = AppColors.textPrimary(context);

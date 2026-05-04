@@ -1,3 +1,10 @@
+// Jednotný HTTP klient na komunikáciu aplikácie TeamMeeter s backend rozhraním servera.
+// Zoskupuje volania skupín, členov, pozvaní, aktivít, chatu, oznámení a prácu s offline zásobníkom zmien.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -88,7 +95,7 @@ class ApiService {
     return int.tryParse(raw.toString());
   }
 
-  /// Po synchronizácii offline konverzie vráti reálne ID servera, inak pôvodné [conversationId].
+  
   Future<int> resolveConversationApiId(int conversationId) async {
     if (conversationId >= 0) return conversationId;
     final m = await _loadConversationIdMapping();
@@ -213,6 +220,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _saveCachedActivities(List<Activity> activities) async {
     final prefs = await SharedPreferences.getInstance();
     final payload = activities.map((a) => a.toCacheJson()).toList();
@@ -230,6 +239,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _savePendingActivityOps(List<Map<String, dynamic>> ops) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_activityOpsKey, jsonEncode(ops));
@@ -249,7 +260,7 @@ class ApiService {
     await _savePendingActivityOps(ops);
   }
 
-  /// Nahradí existujúce čakajúce `update_activity` pre rovnaké ID (posledná verzia víťazí).
+  
   Future<void> _queueActivityUpdateReplacingPending(
     Map<String, dynamic> op,
   ) async {
@@ -310,7 +321,7 @@ class ApiService {
     }
   }
 
-  /// Tvorca môže vždy; v skupine inak právo `edit_activity` (rovnako ako PUT na backende).
+  
   Future<bool> canUserFullyEditActivity({
     required Activity activity,
     required int userId,
@@ -346,6 +357,8 @@ class ApiService {
     await _saveCachedActivities(activities);
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _removeCachedActivity(int activityId) async {
     final activities = await _loadCachedActivities();
     activities.removeWhere((a) => a.idActivity == activityId);
@@ -380,6 +393,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _saveCachedGroups(List<Group> groups) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -403,9 +418,9 @@ class ApiService {
     required List<Group> serverGroups,
     required List<Group> cachedGroups,
   }) {
-    // Start from server data and only preserve groups that are local/pending.
-    // If a regular server group disappears from server response, remove it from
-    // merged output (e.g. group was deleted by another user).
+    
+    
+    
     final merged = <Group>[...serverGroups];
     final indexById = <int, int>{
       for (var i = 0; i < merged.length; i++) merged[i].idGroup: i,
@@ -442,6 +457,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _savePendingGroupOps(List<Map<String, dynamic>> ops) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_groupOpsKey, jsonEncode(ops));
@@ -465,6 +482,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _saveGroupIdMapping(Map<int, int> mapping) async {
     final prefs = await SharedPreferences.getInstance();
     final payload = <String, int>{
@@ -525,6 +544,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _savePendingProfileOps(List<Map<String, dynamic>> ops) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_profileOpsKey, jsonEncode(ops));
@@ -547,6 +568,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _savePendingChatOps(List<Map<String, dynamic>> ops) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_namespacedKey(_chatOpsKey), jsonEncode(ops));
@@ -580,6 +603,8 @@ class ApiService {
     return int.tryParse(raw?.toString() ?? '');
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _removeCachedNotification(int notificationId) async {
     final notifications = await _loadCachedNotifications();
     notifications.removeWhere(
@@ -625,6 +650,8 @@ class ApiService {
     await _savePendingNotificationOps(ops);
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<DateTime?> _getNotificationsSeenAt() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_namespacedKey(_notificationSeenAtKey));
@@ -682,6 +709,8 @@ class ApiService {
     );
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _removeCachedConversation(int conversationId) async {
     final conversations = await _loadCachedConversations();
     conversations.removeWhere((c) => c['id'] == conversationId);
@@ -764,7 +793,7 @@ class ApiService {
           _lastMessages(messages),
         );
       } catch (_) {
-        // Keep existing cached messages if prefetch fails.
+        
       }
     }
   }
@@ -805,6 +834,8 @@ class ApiService {
     await _savePendingChatOps(ops);
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<bool> syncPendingChatOperations() async {
     var pending = List<Map<String, dynamic>>.from(await _loadPendingChatOps());
     if (pending.isEmpty || _token == null || _token!.isEmpty) return false;
@@ -896,7 +927,7 @@ class ApiService {
         } catch (_) {}
       });
 
-      // Give backend a short moment to complete auth handshake.
+      
       await Future.delayed(const Duration(milliseconds: 150));
 
       final afterDeleteSync = <Map<String, dynamic>>[];
@@ -1146,6 +1177,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odosle alebo ulozi formular.
+  // Pred odoslanim skontroluje vstupy a spracuje odpoved.
   Future<void> _saveGroupIconBytes(int groupId, List<int> bytes) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
@@ -1154,11 +1187,15 @@ class ApiService {
     );
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _removeGroupIconBytes(int groupId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('$_groupIconBytesPrefix$groupId');
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<Uint8List?> getCachedGroupIconBytes(int groupId) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('$_groupIconBytesPrefix$groupId');
@@ -1246,6 +1283,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<User?> getCurrentUser() async {
     final response = await http.get(
       Uri.parse('$baseUrl/users/me'),
@@ -1288,6 +1327,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> deleteMyProfilePicture() async {
     try {
       final response = await http
@@ -1310,7 +1351,7 @@ class ApiService {
 
   Future<List<Group>> getGroups() async {
     await _applyPersistedGroupMappingToCache();
-    // Dokončiť pending skupiny pred GET, inak nová skupina / join často chýba v odpovedi.
+    
     await syncPendingActivityOperations();
     try {
       final response = await http
@@ -1332,7 +1373,7 @@ class ApiService {
           try {
             await _cacheGroupIconFromServer(group.idGroup);
           } catch (_) {
-            // keep stale cached icon if fetch fails
+            
           }
         }
         return groups;
@@ -1344,6 +1385,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<Group> getGroupDetails(int groupId) async {
     if (groupId < 0) {
       final groups = await _loadCachedGroups();
@@ -1483,7 +1526,7 @@ class ApiService {
     return roles.map((role) => Role.fromJson(role)).toList();
   }
 
-  /// Role priradené konkrétnemu používateľovi v skupine (GET /roles/groups/.../users/...).
+  
   Future<List<Map<String, dynamic>>> getUserRolesInGroup({
     required int groupId,
     required int userId,
@@ -2013,7 +2056,9 @@ class ApiService {
     }
   }
 
-  /// Returns `true` if the server confirmed delete, `false` if queued for offline sync.
+  
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<bool> deleteConversation(int conversationId) async {
     if (conversationId < 0) {
       var ops = await _loadPendingChatOps();
@@ -2065,7 +2110,7 @@ class ApiService {
     }
   }
 
-  /// Returns `true` if the server deleted the message, `false` if queued offline.
+  
   Future<bool> deleteConversationMessage({
     required int conversationId,
     required int messageId,
@@ -2118,6 +2163,8 @@ class ApiService {
     throw _buildApiException(response, 'Nepodarilo sa stiahnuť súbor');
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> deleteGroup(int groupId) async {
     if (groupId < 0) {
       final groupOps = await _loadPendingGroupOps();
@@ -2249,6 +2296,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> deleteGroupIcon(int groupId) async {
     await _removeGroupIconBytes(groupId);
     final groups = await _loadCachedGroups();
@@ -2287,8 +2336,8 @@ class ApiService {
         final activities = (data['activities'] as List)
             .map((a) => Activity.fromJson(a))
             .toList();
-        // Server už filtruje `deadline > now` a pred SELECTom spúšťa purge — duplicitný
-        // klientský filter len posúval zmiznutie úlohy pred pushom (zlé UX).
+        
+        
         await _saveCachedActivities(activities);
         return activities;
       }
@@ -2301,6 +2350,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<Activity> getActivityDetails(int activityId) async {
     if (activityId < 0) {
       final cached = await _loadCachedActivities();
@@ -2317,7 +2368,9 @@ class ApiService {
     throw _buildApiException(response, 'Nepodarilo sa načítať detail aktivity');
   }
 
-  /// `true` ak server potvrdil zmazanie, `false` ak je požiadavka vo fronte (offline).
+  
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<bool> deleteActivity(int activityId) async {
     if (activityId < 0) {
       final ops = await _loadPendingActivityOps();
@@ -2352,6 +2405,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia upravi existujuce data.
+  // Zmeny ulozi a pripravi ich pre zobrazenie.
   Future<void> updateActivityStatus(int activityId, String status) async {
     try {
       if (activityId > 0) {
@@ -2388,8 +2443,8 @@ class ApiService {
     await _saveCachedActivities(updated);
   }
 
-  /// Úprava polí aktivity (PUT ako na serveri). Pri offline zaradí [`update_activity`].
-  /// Vráti `true` ak server odpovedal 200.
+  
+  
   Future<bool> updateActivity({
     required int activityId,
     required String name,
@@ -2483,6 +2538,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<bool> syncPendingActivityOperations() async {
     final reachable = await isServerReachable();
     if (!reachable) return false;
@@ -2693,6 +2750,8 @@ class ApiService {
     return syncedAny;
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<void> _syncPendingProfileOperations() async {
     final ops = await _loadPendingProfileOps();
     if (ops.isEmpty) return;
@@ -2751,6 +2810,8 @@ class ApiService {
     await _savePendingProfileOps(remaining);
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<void> _syncPendingGroupOperations() async {
     final ops = await _loadPendingGroupOps();
     if (ops.isEmpty) return;
@@ -3133,6 +3194,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia riadi pravidelne obnovovanie dat.
+  // Zapina alebo vypina periodicke volania podla stavu obrazovky.
   Future<void> _syncPendingNotificationOperations() async {
     final ops = await _loadPendingNotificationOps();
     if (ops.isEmpty) return;
@@ -3191,11 +3254,15 @@ class ApiService {
     await _savePendingNotificationOps(remaining);
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<int> getPendingActivityOperationsCount() async {
     final ops = await _loadPendingActivityOps();
     return ops.length;
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<int> getPendingOfflineChangesCount() async {
     final activityOps = await _loadPendingActivityOps();
     final groupOps = await _loadPendingGroupOps();
@@ -3293,6 +3360,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<String?> getGroupInviteCode(int groupId) async {
     final resolvedGroupId = await _resolveServerGroupId(groupId);
     final response = await http.get(
@@ -3377,6 +3446,8 @@ class ApiService {
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> deleteNotification(int notificationId) async {
     try {
       final response = await http

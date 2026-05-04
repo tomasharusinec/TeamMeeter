@@ -1,3 +1,10 @@
+// Jedno dialógové okno na zobrazenie aj úpravu jednej konkrétnej aktivity skupiny používateľom.
+// Vytiahne zo serveru čerstvý podrobný záznam, skontroluje práva používateľa a uloži zmeny.
+// This file was generated using AI (Gemini)
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/activity.dart';
@@ -38,6 +45,8 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
   DateTime? _editDeadline;
 
   @override
+  // Tato funkcia pripravi lokalny stav dialogu pre zvolenu aktivitu.
+  // Hned po otvoreni nacita detail aktivity a prava na upravy.
   void initState() {
     super.initState();
     _activity = widget.activity;
@@ -45,12 +54,16 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
   }
 
   @override
+  // Tato funkcia zatvori controllery vstupnych poli v edit mode.
+  // Predide unikom pamate po zatvoreni dialogu.
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
 
+  // Tato funkcia nacita aktualny detail aktivity zo servera.
+  // Po nacitani vypne loader a spusti kontrolu edit opravnenia.
   Future<void> _loadDetails() async {
     try {
       final api = Provider.of<AuthProvider>(context, listen: false).apiService;
@@ -65,6 +78,8 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
     if (mounted) await _refreshEditPermission();
   }
 
+  // Tato funkcia overi, ci prihlaseny uzivatel smie plne upravovat aktivitu.
+  // Vysledok ulozi do flagu, podla ktoreho sa ukazu editacie akcie.
   Future<void> _refreshEditPermission() async {
     setState(() => _resolvingEditPermission = true);
     try {
@@ -102,6 +117,8 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
     }
   }
 
+  // Tato funkcia preklopi dialog do rezimu upravy.
+  // Predvyplni formular hodnotami z aktualnej aktivity.
   void _enterEditMode() {
     _nameController.text = _activity.name;
     _descriptionController.text = _activity.description ?? '';
@@ -110,10 +127,14 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
     setState(() => _isEditing = true);
   }
 
+  // Tato funkcia ukonci edit rezim bez ulozenia zmien.
+  // Pouziva sa pri zruseni upravy.
   void _leaveEditMode() {
     setState(() => _isEditing = false);
   }
 
+  // Tato funkcia vrati textovy popis zvoleneho terminu.
+  // Ak termin nie je nastaveny, vrati vyzvu na jeho doplnenie.
   String _editDeadlineLabel() {
     final dt = _editDeadline;
     if (dt == null) return 'Nastaviť termín';
@@ -153,6 +174,8 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
     });
   }
 
+  // Tato funkcia ulozi upraveny nazov, popis, stav a deadline aktivity.
+  // Pri uspechu obnovi detail, zavrie edit rezim a zavola callback na refresh.
   Future<void> _saveEdits() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -208,6 +231,8 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
     }
   }
 
+  // Tato funkcia potvrdi a nasledne vymaze aktivitu.
+  // Po vymazani zavrie dialog a informuje rodicovsky screen o zmene.
   Future<void> _deleteActivity() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -306,6 +331,8 @@ class _ActivityDetailDialogState extends State<ActivityDetailDialog> {
   }
 
   @override
+  // Tato funkcia vykresli detail aktivity alebo edit formular.
+  // Podla stavu zobrazi loader, read-only detail alebo editacne ovladace.
   Widget build(BuildContext context) {
     final textPrimary = AppColors.textPrimary(context);
     return Dialog(

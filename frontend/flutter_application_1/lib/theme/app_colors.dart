@@ -1,3 +1,10 @@
+// Centrálny zoznam rozumných farieb pre svetlý aj tmavý režim používaný v widgetoch.
+// Jednotlivé statické funkcie berú BuildContext a vracajú odtieň podľa svetlej alebo tmavej témy.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 
 class AppColors {
@@ -21,7 +28,7 @@ class AppColors {
     ];
   }
 
-  /// Full-screen flows (QR invite) — dark keeps cinematic gradient; light matches home.
+  
   static List<Color> fullScreenGradient(BuildContext context) {
     if (isDark(context)) {
       return const [
@@ -34,6 +41,8 @@ class AppColors {
     return screenGradient(context);
   }
 
+  // Tato funkcia zobrazi dialogove okno.
+  // Spracuje vstupy pouzivatela a vrati vysledok.
   static Color dialogBackground(BuildContext context) =>
       isDark(context) ? const Color(0xFF1A0A0A) : const Color(0xFFF2ECEC);
 
@@ -46,15 +55,15 @@ class AppColors {
   static Color textSecondary(BuildContext context) =>
       isDark(context) ? Colors.white70 : Colors.black54;
 
-  /// Replaces white54 / white60 on mixed backgrounds.
+  
   static Color textMuted(BuildContext context) =>
       isDark(context) ? Colors.white70 : const Color(0xFF5C5C5C);
 
-  /// Replaces white38 / white30.
+  
   static Color textDisabled(BuildContext context) =>
       isDark(context) ? Colors.white38 : const Color(0xFF757575);
 
-  /// List row on gradient (1A0A0A @ ~80% in dark).
+  
   static Color listCardBackground(BuildContext context) =>
       isDark(context)
           ? const Color(0xFF1A0A0A).withAlpha(204)

@@ -1,3 +1,10 @@
+// Obrazovka s pozvánkami do skupín kde používateľ ešte nie je členom.
+// Pozvanie vie priamo prijať alebo odmietnuť bez opúšťania tej istej obrazovky.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -38,6 +45,8 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
   }
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     _inviteCode = widget.initialInviteCode;
@@ -48,6 +57,8 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
     _loadInviteCode();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadInviteCode() async {
     setState(() => _isLoading = true);
     try {
@@ -113,6 +124,8 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final textPrimary = AppColors.textPrimary(context);
     final textSecondary = AppColors.textSecondary(context);

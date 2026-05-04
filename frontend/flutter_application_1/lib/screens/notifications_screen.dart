@@ -1,3 +1,10 @@
+// Zobrazuje používateľovi zoznam vnútorných oznámení aplikácie TeamMeeter.
+// Položky vie označiť ako prečítané, odstrániť alebo otvoriť súvisiacu obrazovku podľa údajov v oznámení.
+// AI generated with manual refinements
+
+
+
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -17,11 +24,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> _notifications = [];
 
   @override
+  // Tato funkcia pripravi uvodny stav obrazovky.
+  // Spusta prve nacitanie dat a potrebne inicializacie.
   void initState() {
     super.initState();
     _loadNotifications();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadNotifications() async {
     final shouldShowBlockingLoader = _notifications.isEmpty;
     if (mounted && shouldShowBlockingLoader) {
@@ -48,6 +59,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _deleteNotification(int notificationId) async {
     final previous = List<Map<String, dynamic>>.from(_notifications);
     setState(
@@ -168,6 +181,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final onCard = AppColors.textPrimary(context);
     final onCardMuted = AppColors.textMuted(context);

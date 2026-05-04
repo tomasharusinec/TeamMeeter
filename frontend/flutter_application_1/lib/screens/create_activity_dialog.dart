@@ -1,3 +1,10 @@
+// Dialógový formulár na zadanie novej úlohy patriacej konkrétnej skupine.
+// Skontroluje vstupy a výsledok odošle cez rovnakého API klienta ako zvyšok aplikácie.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -31,7 +38,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
   final _nameController = TextEditingController();
   DateTime? _selectedDeadline;
   Group? _selectedGroup;
-  /// `__none__` | `__all__` | `__pick__` | `'${idRole}'` pre jednu rolu
+  
   String _roleChoice = _roleNone;
   final Set<int> _pickedRoleIds = {};
   List<Role> _roles = [];
@@ -39,11 +46,15 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
   bool _isCreating = false;
 
   @override
+  // Tato funkcia uprace zdroje pred zatvorenim obrazovky.
+  // Zastavi listenery, timery alebo controllery.
   void dispose() {
     _nameController.dispose();
     super.dispose();
   }
 
+  // Tato funkcia nacita alebo obnovi data.
+  // Pouziva API volania a potom aktualizuje stav.
   Future<void> _loadRoles(int groupId) async {
     setState(() => _isLoadingRoles = true);
     try {
@@ -57,7 +68,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
         });
       }
     } catch (e) {
-      // silently fail – roles dropdown will just be empty
+      
     } finally {
       if (mounted) setState(() => _isLoadingRoles = false);
     }
@@ -146,6 +157,8 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
     }
   }
 
+  // Tato funkcia vytvori novu polozku.
+  // Po uspesnom vytvoreni obnovi zoznam alebo UI.
   Future<void> _createActivity() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
@@ -176,13 +189,13 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
       final deadlineStr = _selectedDeadline?.toUtc().toIso8601String();
 
       if (_selectedGroup != null) {
-        // Group activity
+        
         final result = await api.createGroupActivity(
           groupId: _selectedGroup!.idGroup,
           name: name,
           deadline: deadlineStr,
         );
-        // Priradenie rolí (žiadna / jedna / všetky) — voliteľné, chyby priradenia nechajú aktivitu vytvorenú
+        
         var roleAssigned = false;
         final rawId = result['activity_id'];
         final activityId = rawId is int
@@ -239,7 +252,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
           );
         }
       } else {
-        // Individual activity
+        
         final result = await api.createIndividualActivity(
           name: name,
           deadline: deadlineStr,
@@ -289,6 +302,8 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final isDarkMode = AppColors.isDark(context);
     return Dialog(
@@ -327,7 +342,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Title
+                
                 Text(
                   'Create activity',
                   style: TextStyle(
@@ -338,13 +353,13 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                 ),
                 const SizedBox(height: 24),
 
-                // Name field
+                
                 _buildLabel('Name:'),
                 const SizedBox(height: 6),
                 _buildTextField(_nameController, 'Názov aktivity'),
                 const SizedBox(height: 16),
 
-                // Time field
+                
                 _buildLabel('Time:'),
                 const SizedBox(height: 6),
                 GestureDetector(
@@ -381,7 +396,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                 ),
                 const SizedBox(height: 16),
 
-                // Group selector (optional)
+                
                 _buildLabel('Group (optional):'),
                 const SizedBox(height: 6),
                 Container(
@@ -445,7 +460,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
                   ),
                 ),
 
-                // Assign to roles (only when group selected)
+                
                 if (_selectedGroup != null) ...[
                   const SizedBox(height: 16),
                   _buildLabel('Assign to roles:'),
@@ -646,7 +661,7 @@ class _CreateActivityDialogState extends State<CreateActivityDialog> {
 
                 const SizedBox(height: 28),
 
-                // Create button
+                
                 SizedBox(
                   width: double.infinity,
                   height: 48,

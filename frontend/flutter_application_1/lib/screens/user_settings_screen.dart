@@ -1,3 +1,10 @@
+// Nastavenia účtu prihláseného používateľa vrátane prepínača motívu aplikácie a odhlásenia.
+// Umožňuje meniť vzhľad aplikácie a bezpečne ukončiť reláciu späť na prihlasovanie.
+// AI generated with manual refinements
+
+
+
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -24,6 +31,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   bool _isUploading = false;
   bool _isDeleting = false;
 
+  // Tato funkcia upravi existujuce data.
+  // Zmeny ulozi a pripravi ich pre zobrazenie.
   Future<void> _changeProfilePhoto() async {
     if (!await PermissionService.hasGalleryReadAccess()) {
       final granted = await PermissionService.requestGalleryPermission();
@@ -120,6 +129,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     }
   }
 
+  // Tato funkcia odstrani vybranu polozku.
+  // Po vymazani synchronizuje stav obrazovky.
   Future<void> _deleteProfilePhoto() async {
     setState(() => _isDeleting = true);
     try {
@@ -211,6 +222,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   }
 
   @override
+  // Tato funkcia sklada obrazovku z aktualnych dat.
+  // Vrati widget strom, ktory uzivatel vidi na displeji.
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;

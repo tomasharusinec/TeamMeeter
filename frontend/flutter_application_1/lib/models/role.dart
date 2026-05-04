@@ -1,3 +1,10 @@
+// Malá dátová trieda pre používateľskú rolu vo vnútri konkrétnej skupiny.
+// Obsahuje názov, farbu vizuálnu ako aj zoznam reťazcov oprávnení pre správu skupiny.
+// This file was generated using AI (Gemini)
+
+
+
+
 class Role {
   final int idRole;
   final String name;
@@ -11,6 +18,8 @@ class Role {
     this.permissions = const [],
   });
 
+  // Tato funkcia nacita objekt z JSON dat.
+  // Prevedie prijaty format na interny model.
   factory Role.fromJson(Map<String, dynamic> json) {
     final rawId = json['id_role'];
     final idRole = rawId is int

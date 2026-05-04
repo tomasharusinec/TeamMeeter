@@ -1,3 +1,10 @@
+// Čísla a texty používateľa potrebné už po prihlásení v celej aplikácii TeamMeeter.
+// Umožňuje načítanie používateľa z JSON bez zbytočne zložitých vnútorných polí modelu.
+// This file was generated using AI (Gemini)
+
+
+
+
 class User {
   final int? idRegistration;
   final String username;
@@ -19,6 +26,8 @@ class User {
     this.hasProfilePicture = false,
   });
 
+  // Tato funkcia nacita objekt z JSON dat.
+  // Prevedie prijaty format na interny model.
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       idRegistration: json['id_registration'],
